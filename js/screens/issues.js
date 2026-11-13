@@ -4,7 +4,7 @@ QP.screens = QP.screens || {};
 
 (function () {
   const esc = s => QP.esc(s);
-  let filter = { sev: 'open', vendor: 'all' };
+  QP.issueFilter = QP.issueFilter || { sev: 'open', vendor: 'all' };
   QP.justDone = QP.justDone || {};   // flagId -> time; keeps a just-resolved issue visible for a moment
 
   QP.decide = function (flag, action, value, reason) {
@@ -57,6 +57,7 @@ QP.screens = QP.screens || {};
   }
 
   QP.screens.issues = function (main) {
+    const filter = QP.issueFilter;
     const m = QP.model;
     if (!m.processedIds.length) {
       main.innerHTML = `<div class="head"><div><h1>Review issues</h1><p>Nothing processed yet.</p></div></div><div class="card empty">Process vendor replies first. <br><br><button class="btn primary" onclick="QP.go('responses')">Go to Vendor responses</button></div>`;

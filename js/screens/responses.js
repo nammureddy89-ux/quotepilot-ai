@@ -75,7 +75,7 @@ QP.busy = QP.busy || {};
       // decisions about this vendor's old flags no longer apply to the new reading
       Object.keys(QP.state.decisions).forEach(k => { if (k.startsWith(vendorId + ':')) delete QP.state.decisions[k]; });
     } catch (e) {
-      if (e.cancelled) QP.toast('Stopped. Previous results kept.');
+      if (e.cancelled) QP.toast(`Stopped reading ${QP.VENDORS.find(v => v.id === vendorId).name}.${vs.extraction ? ' Previous results kept.' : ''}`);
       else vs.error = e.message;
     }
     QP.busy[vendorId] = null; QP.save(); QP.render();
@@ -101,6 +101,7 @@ QP.busy = QP.busy || {};
     const V = QP.VENDORS.find(v => v.id === vendorId);
     const ok = await QP.confirmBox('Remove this reply?', `All files and AI results for <b>${esc(V.name)}</b> will be removed. You can upload the correct reply afterwards.`, 'Remove', true);
     if (!ok) return;
+    QP.queue = QP.queue.filter(x => x !== vendorId);
     const vs = QP.vendorState(vendorId);
     for (const f of vs.files) { await QP.files.del(f.id); QP.forgetPrepared(f.id); }
     QP.state.vendors[vendorId] = { status: 'not_responded', files: [], pastedText: '', sent: vs.sent || [] };
@@ -148,6 +149,7 @@ QP.busy = QP.busy || {};
   async function removeFile(vendorId, fileId) {
     const vs = QP.vendorState(vendorId);
     vs.files = vs.files.filter(f => f.id !== fileId);
+    if (!vs.files.length) QP.queue = QP.queue.filter(x => x !== vendorId);
     await QP.files.del(fileId); QP.forgetPrepared(fileId);
     if (!vs.files.length) { vs.status = 'not_responded'; vs.extraction = null; }
     else if (vs.extraction) vs.status = 'stale';
@@ -199,6 +201,33 @@ QP.busy = QP.busy || {};
     body.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { const s = JSON.parse(b.getAttribute('data-src')); QP.showSource(vendorId, s, { title: 'Source' }); });
   };
 
+  function openMenu(anchor, vendorId, replyOnly) {
+    closeMenu();
+    const vs = QP.state.vendors[vendorId] || { files: [] };
+    const has = vs.files && vs.files.length, busy = QP.busy[vendorId] || QP.queue.includes(vendorId);
+    const items = [
+      { k: 'up', t: 'Upload files', h: 'Add a quote or document from this vendor', ok: true },
+      { k: 'paste', t: 'Paste email', h: 'Paste a reply received by email', ok: true }
+    ];
+    if (!replyOnly) items.push(
+      { k: 'reread', t: 'Re-read quote with AI', h: 'Extract everything again, e.g. after adding a file', ok: has && !busy },
+      { k: 'delete', t: "Delete this vendor's reply", h: 'Remove all files and results for this vendor', ok: has && !busy, danger: true });
+    const m = document.createElement('div');
+    m.className = 'menu';
+    m.innerHTML = items.map(i => `<button class="mi ${i.danger ? 'danger' : ''}" data-k="${i.k}" ${i.ok ? '' : 'disabled'}><div>${i.t}</div><div class="h">${i.h}</div></button>`).join('');
+    anchor.parentElement.appendChild(m);
+    m.querySelectorAll('.mi').forEach(b => b.onclick = e => {
+      e.stopPropagation(); closeMenu();
+      const k = b.dataset.k;
+      if (k === 'up') uploadDialog(vendorId);
+      if (k === 'paste') pasteDialog(vendorId);
+      if (k === 'reread') QP.reprocess(vendorId);
+      if (k === 'delete') QP.removeVendorReply(vendorId);
+    });
+    setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+  }
+  function closeMenu() { document.querySelectorAll('.menu').forEach(m => m.remove()); }
+
   QP.screens.responses = function (main) {
     const vids = QP.VENDORS.map(v => v.id);
     const received = vids.filter(id => QP.state.vendors[id] && QP.state.vendors[id].files.length).length;
@@ -215,29 +244,45 @@ QP.busy = QP.busy || {};
       <div class="card">${QP.VENDORS.map(V => {
         const vs = QP.state.vendors[V.id] || { status: 'not_responded', files: [] };
         const busy = QP.busy[V.id];
+        const queued = QP.queue.includes(V.id);
         const [cls, label] = STATUS[vs.status] || STATUS.not_responded;
         const vo = QP.model && QP.model.vendors[V.id];
-        const sum = vo && vo.processed ? `<div class="small muted" style="margin-top:4px">${vo.totals.quoted}/30 lines priced · ${vo.openRed ? `<span style="color:var(--red)">${vo.openRed} must resolve</span>` : '<span class="tile-ok">✓ must-resolve done</span>'} · ${vo.openYellow ? vo.openYellow + ' to check' : '<span class="tile-ok">✓ checks done</span>'}</div>` : '';
+        let status;
+        if (busy) status = `<span class="pill blue"><span class="spinner"></span> AI reading…</span><div class="status-line" id="st-${V.id}">${esc(busy.status === 'AI reading…' ? '' : busy.status)}</div><a href="#" class="stoplink" data-stop="${V.id}">Stop reading</a>`;
+        else if (queued) status = '<span class="pill grey">⏳ Waiting to be read</span>';
+        else {
+          status = `<span class="pill ${cls}">${label}</span>`;
+          if (vo && vo.processed && vs.status === 'processed') {
+            const next = vo.openRed ? `<a href="#" class="small" style="color:var(--red)" data-goissues="${V.id}">${vo.openRed} ${vo.openRed === 1 ? 'issue needs' : 'issues need'} your decision →</a>`
+              : vo.openYellow ? `<a href="#" class="small" style="color:var(--amber)" data-goissues="${V.id}">${vo.openYellow} ${vo.openYellow === 1 ? 'point' : 'points'} worth a look →</a>`
+              : '<span class="small tile-ok">✓ Nothing to review</span>';
+            status += `<div style="margin-top:4px">${next}</div>${vo.totals.missing ? `<div class="small muted">Quoted ${vo.totals.quoted} of ${QP.state.rfx.lines.length} lines</div>` : ''}`;
+          }
+        }
+        if ((vs.sent || []).length) status += `<div class="small" style="margin-top:2px"><a href="#" data-sentv="${V.id}">✉ ${vs.sent.length} message${vs.sent.length > 1 ? 's' : ''} sent</a></div>`;
+        let main = '';
+        if (busy || queued) main = '';
+        else if (!vs.files.length) main = `<button class="btn sm primary" data-addreply="${V.id}">Add reply ▾</button>`;
+        else if (vs.error) main = `<button class="btn sm primary" data-proc="${V.id}">Try again</button>`;
+        else if (vs.extraction && vs.status === 'processed') main = `<button class="btn sm" data-ex="${V.id}">View quote</button>`;
+        else main = `<button class="btn sm primary" data-proc="${V.id}">Read with AI</button>`;
         return `<div class="vrow">
           <div class="avatar">${V.id}</div>
           <div><b>${esc(V.name)}</b><div class="small muted">${esc(V.contact)} · ${V.status2026 === 'Incumbent' ? 'Current supplier' : 'New vendor'}</div></div>
-          <div>${QP.queue.includes(V.id) ? `<span class="pill grey">⏳ Queued — #${QP.queue.indexOf(V.id) + 1}</span>` : ''}${busy ? `<span class="pill blue"><span class="spinner"></span> AI reading</span><div class="status-line" id="st-${V.id}">${esc(busy.status)}</div>` : QP.queue.includes(V.id) ? '' : `<span class="pill ${cls}">${label}</span>`}${sum}${(vs.sent || []).length ? `<div class="small" style="margin-top:4px"><a href="#" data-sentv="${V.id}">✉ ${vs.sent.length} message${vs.sent.length > 1 ? 's' : ''} sent</a></div>` : ''}</div>
-          <div><div class="files">${vs.files.map(f => `<span class="file" data-view="${V.id}|${f.id}">📄 ${esc(f.name)} <span data-del="${V.id}|${f.id}" title="Remove" style="margin-left:4px;color:#98a2b3">✕</span></span>`).join('') || '<span class="muted small">No reply yet</span>'}</div>
+          <div>${status}</div>
+          <div><div class="files">${vs.files.map(f => `<span class="file" data-view="${V.id}|${f.id}" title="${esc(f.name)}">📄 ${esc(f.name.length > 26 ? f.name.slice(0, 24) + '…' : f.name)}<span data-del="${V.id}|${f.id}" title="Remove file" class="fx">✕</span></span>`).join('') || '<span class="muted small">No reply yet</span>'}</div>
             ${vs.error ? `<div class="err">⚠ ${esc(vs.error)}</div>` : ''}</div>
-          <div class="row" style="justify-content:flex-end">
-            <button class="btn sm" data-up="${V.id}">Upload</button><button class="btn sm" data-paste="${V.id}">Paste email</button>
-            ${busy || QP.queue.includes(V.id) ? `<button class="btn sm danger" data-cancel="${V.id}">Cancel</button>` : vs.files.length ? `<button class="btn sm ${vs.extraction && vs.status === 'processed' ? '' : 'primary'}" data-proc="${V.id}">${vs.error ? 'Retry' : vs.extraction && vs.status === 'processed' ? 'Re-process' : 'Read with AI'}</button>` : ''}
-            ${vs.extraction ? `<button class="btn sm" data-ex="${V.id}">View extracted quote</button>` : ''}
-          </div></div>`;
+          <div class="row" style="justify-content:flex-end;flex-wrap:nowrap;position:relative">${main}<button class="btn sm" data-menu="${V.id}" title="More actions" aria-label="More actions">⋯</button></div></div>`;
       }).join('')}</div>`;
 
     main.querySelector('#simBtn').onclick = QP.simulateReplies;
     const pa = main.querySelector('#procAll'); if (pa) pa.onclick = QP.processAll;
     main.querySelectorAll('[data-sentv]').forEach(a => a.onclick = e => { e.preventDefault(); QP.showSent(a.dataset.sentv); });
-    main.querySelectorAll('[data-up]').forEach(b => b.onclick = () => uploadDialog(b.dataset.up));
-    main.querySelectorAll('[data-paste]').forEach(b => b.onclick = () => pasteDialog(b.dataset.paste));
     main.querySelectorAll('[data-proc]').forEach(b => b.onclick = () => QP.reprocess(b.dataset.proc));
-    main.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => QP.cancelProcessing(b.dataset.cancel));
+    main.querySelectorAll('[data-stop]').forEach(a => a.onclick = e => { e.preventDefault(); QP.cancelProcessing(a.dataset.stop); });
+    main.querySelectorAll('[data-goissues]').forEach(a => a.onclick = e => { e.preventDefault(); QP.issueFilter = { sev: 'open', vendor: a.dataset.goissues }; QP.go('issues'); });
+    main.querySelectorAll('[data-addreply]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(b, b.dataset.addreply, true); });
+    main.querySelectorAll('[data-menu]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(b, b.dataset.menu, false); });
     main.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => QP.showExtraction(b.dataset.ex));
     main.querySelectorAll('[data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); const [v, f] = b.dataset.del.split('|'); const fr = (QP.state.vendors[v].files || []).find(x => x.id === f); QP.confirmBox('Remove file?', `Remove <b>${esc(fr ? fr.name : 'this file')}</b> from this vendor's reply?`, 'Remove', true).then(ok => { if (ok) removeFile(v, f); }); });
     main.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const [v, f] = b.dataset.view.split('|'); QP.showFile(v, QP.state.vendors[v].files.find(x => x.id === f)); });
