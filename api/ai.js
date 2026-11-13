@@ -6,7 +6,7 @@
 // we wait briefly and try the next model. Free-tier limits are per model, so another model often works.
 
 const FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-const TIME_BUDGET_MS = 50000; // stay under Vercel's 60 s limit
+const TIME_BUDGET_MS = 240000; // stay under Vercel's 300 s limit (vercel.json)
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
