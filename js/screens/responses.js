@@ -231,6 +231,7 @@ QP.busy = QP.busy || {};
       { k: 'up', t: 'Upload files', h: 'Add a quote or document from this vendor', ok: true },
       { k: 'paste', t: 'Paste email', h: 'Paste a reply received by email', ok: true }
     ];
+    if (!replyOnly) items.push({ k: 'msg', t: 'Message vendor', h: 'Ask this vendor anything (email simulated)', ok: true });
     if (!replyOnly) items.push(
       { k: 'reread', t: 'Re-read quote with AI', h: 'Extract everything again, e.g. after adding a file', ok: has && !busy },
       { k: 'delete', t: "Delete this vendor's reply", h: 'Remove all files and results for this vendor', ok: has && !busy, danger: true });
@@ -244,6 +245,7 @@ QP.busy = QP.busy || {};
       if (k === 'up') uploadDialog(vendorId);
       if (k === 'paste') pasteDialog(vendorId);
       if (k === 'reread') QP.reprocess(vendorId);
+      if (k === 'msg') QP.messageVendor(vendorId);
       if (k === 'delete') QP.removeVendorReply(vendorId);
     });
     setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
@@ -275,9 +277,10 @@ QP.busy = QP.busy || {};
         else {
           status = `<span class="pill ${cls}">${label}</span>`;
           if (vo && vo.processed && vs.status === 'processed') {
-            const next = vo.openRed ? `<a href="#" class="small" style="color:var(--red)" data-goissues="${V.id}">${vo.openRed} ${vo.openRed === 1 ? 'issue needs' : 'issues need'} your decision →</a>`
-              : vo.openYellow ? `<a href="#" class="small" style="color:var(--amber)" data-goissues="${V.id}">${vo.openYellow} ${vo.openYellow === 1 ? 'point' : 'points'} worth a look →</a>`
-              : '<span class="small tile-ok">✓ Nothing to review</span>';
+            // colour lives in the dot; text stays neutral (same pattern as Compare and Review Issues)
+            const next = !vo.openRed && !vo.openYellow ? '<span class="small tile-ok">✓ Nothing to review</span>'
+              : (vo.openRed ? `<a href="#" class="small isslink" data-goissues="${V.id}" data-sev="red"><span class="mk mk-red">●</span><b>${vo.openRed} need${vo.openRed === 1 ? 's' : ''} your decision</b> →</a>` : '')
+              + (vo.openYellow ? `<a href="#" class="small isslink muted" data-goissues="${V.id}" data-sev="yellow"><span class="mk mk-amber">●</span>${vo.openYellow} worth a look →</a>` : '');
             status += `<div style="margin-top:4px">${next}</div>${vo.totals.quoted < QP.state.rfx.lines.length ? `<div class="small muted">Quoted ${vo.totals.quoted} of ${QP.state.rfx.lines.length} lines</div>` : ''}`;
             if (vs.timing && QP.SHOW_TIMING) status += `<div class="small muted timing">⏱ ${esc(QP.timingText(vs.timing))}</div>`;
           }
@@ -304,7 +307,7 @@ QP.busy = QP.busy || {};
     main.querySelectorAll('[data-sentv]').forEach(a => a.onclick = e => { e.preventDefault(); QP.showSent(a.dataset.sentv); });
     main.querySelectorAll('[data-proc]').forEach(b => b.onclick = () => QP.reprocess(b.dataset.proc));
     main.querySelectorAll('[data-stop]').forEach(a => a.onclick = e => { e.preventDefault(); QP.cancelProcessing(a.dataset.stop); });
-    main.querySelectorAll('[data-goissues]').forEach(a => a.onclick = e => { e.preventDefault(); QP.issueFilter = { sev: 'open', vendor: a.dataset.goissues }; QP.go('issues'); });
+    main.querySelectorAll('[data-goissues]').forEach(a => a.onclick = e => { e.preventDefault(); QP.issueFilter = { sev: a.dataset.sev || 'open', vendor: a.dataset.goissues }; QP.go('issues'); });
     main.querySelectorAll('[data-addreply]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(b, b.dataset.addreply, true); });
     main.querySelectorAll('[data-menu]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(b, b.dataset.menu, false); });
     main.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => QP.showExtraction(b.dataset.ex));

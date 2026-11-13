@@ -89,7 +89,7 @@ QP.screens = QP.screens || {};
         ${m.processedIds.map(id => { const vo = m.vendors[id];
           const val = !vo.openRed && !vo.openYellow ? '<span class="tile-ok">✓ All resolved</span>'
             : `<div class="cnt ${vo.openRed ? 'r' : 'z'}">🔴 <b>${vo.openRed}</b> must resolve</div><div class="cnt ${vo.openYellow ? 'y' : 'z'}">🟡 <b>${vo.openYellow}</b> worth a check</div>`;
-          return `<div class="kpi"><div class="l">${esc(vo.name)}</div><div class="v" style="font-size:16px">${val}</div></div>`; }).join('')}
+          return `<div class="kpi"><div class="l">${esc(vo.name)}</div><div class="v" style="font-size:16px">${val}</div><a href="#" class="small" data-msgv="${id}">✉ Message vendor</a></div>`; }).join('')}
       </div>
       <div class="tabs" id="sevTabs">
         <button data-s="open" class="${filter.sev === 'open' ? 'on' : ''}">Open (${counts.open})</button>
@@ -102,6 +102,7 @@ QP.screens = QP.screens || {};
       <div class="card">${flags.map(flagHtml).join('') || `<div class="empty">${counts.open || counts.done ? 'No issues match this filter.' : 'Nothing to review. 🎉'}</div>`}</div>`;
 
     main.querySelectorAll('#sevTabs [data-s]').forEach(b => b.onclick = () => { filter.sev = b.dataset.s; QP.render(); });
+    main.querySelectorAll('[data-msgv]').forEach(a => a.onclick = e => { e.preventDefault(); QP.messageVendor(a.dataset.msgv); });
     main.querySelector('#vfilter').onchange = e => { filter.vendor = e.target.value; QP.render(); };
     main.querySelectorAll('[data-flag]').forEach(el => {
       const f = m.flags.find(x => x.id === el.dataset.flag);

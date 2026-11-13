@@ -125,6 +125,9 @@ window.QP = window.QP || {};
 
     function addFlag(vo, f) {
       f.vendor = vo.id;
+      // Asking the vendor can never harm the data, so it is offered on every issue.
+      f.actions = f.actions || [];
+      if (!f.actions.includes('ask')) f.actions.push('ask');
       f.id = `${vo.id}:${f.type}:${f.line == null ? 'x' : f.line}`;
       let d = decisions[f.id];
       if (f.noAssume && d && d.action === 'assume') {   // an estimate entered before this rule existed no longer counts

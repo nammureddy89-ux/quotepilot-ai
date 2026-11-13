@@ -197,3 +197,7 @@ table.grid thead th { white-space: normal; }
 .vcard .vm { font-size: 12px; margin-top: 4px; }
 table.grid tfoot tr.sum td { background: #eef2ff; border-top: 2px solid #c7d2fe; font-size: 14px; }
 table.grid tfoot tr.gap-row td { background: #fff; padding: 4px; border: 0; }
+
+a.isslink { display: block; text-decoration: none; color: var(--ink); margin-top: 2px; }
+a.isslink.muted { color: var(--muted); }
+a.isslink:hover { text-decoration: underline; }

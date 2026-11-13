@@ -23,16 +23,19 @@ Write the email body.`;
     return { text: String(text || '').trim(), model };
   }
 
+  // General message to a vendor, not tied to an issue (issues can still be ticked).
+  QP.messageVendor = function (vendorId) { QP.askVendor({ vendor: vendorId, id: null }); };
+
   QP.askVendor = function (flag) {
     const m = QP.model;
     const V = QP.VENDORS.find(v => v.id === flag.vendor);
-    const askable = m.flags.filter(f => f.vendor === flag.vendor && f.open && (f.actions || []).includes('ask') && !(f.decision && f.decision.action === 'ask'));
-    if (!askable.find(f => f.id === flag.id)) askable.unshift(flag);
+    const askable = m.flags.filter(f => f.vendor === flag.vendor && f.open && !(f.decision && f.decision.action === 'ask'));
+    if (flag.id && !askable.find(f => f.id === flag.id)) askable.unshift(flag);
     const body = QP.modal(`Ask ${esc(V.name)}`, `
       <div class="kv" style="margin-bottom:10px"><div class="k">To</div><div>${esc(V.contact)} &lt;${esc(V.email)}&gt;</div>
         <div class="k">Subject</div><div><input id="avSubj" class="btn" style="width:100%;text-align:left;cursor:text" value="Clarification on your quotation — RFx ${esc(QP.state.rfx.id)}"></div></div>
-      <div class="small muted" style="margin-bottom:4px">Tick the issues to ask about, then click <b>Draft email</b>:</div>
-      <div id="avIssues" style="margin-bottom:10px">${askable.map(f => `<label style="display:block;margin:3px 0"><input type="checkbox" value="${esc(f.id)}" ${f.id === flag.id ? 'checked' : ''}> <span class="dot-inline" style="color:${f.sev === 'red' ? 'var(--red)' : 'var(--amber)'}">●</span> ${esc(f.title)}${f.line ? ' · line ' + f.line : ''}</label>`).join('')}</div>
+      <div class="small muted" style="margin-bottom:4px">${askable.length ? 'Tick any issues to ask about and click <b>Draft email</b> — or just type your question below:' : 'No open issues for this vendor — type your question below:'}</div>
+      <div id="avIssues" style="margin-bottom:10px;max-height:180px;overflow:auto">${askable.map(f => `<label style="display:block;margin:3px 0"><input type="checkbox" value="${esc(f.id)}" ${f.id === flag.id ? 'checked' : ''}> <span class="dot-inline" style="color:${f.sev === 'red' ? 'var(--red)' : 'var(--amber)'}">●</span> ${esc(f.title)}${f.line ? ' · line ' + f.line : ''}</label>`).join('')}</div>
       <div class="row" style="margin-bottom:8px"><button class="btn primary" id="avDraft">✨ Draft email</button><span id="avStatus" class="small muted"></span><span class="grow"></span><span id="avModel" class="small muted" style="cursor:help;display:none">ⓘ</span></div>
       <textarea class="paste" id="avBody" placeholder="Click “Draft email”, or type your message here."></textarea>
       <div class="row" style="margin-top:10px"><span class="small muted">Email delivery is simulated in this prototype.</span><span class="grow"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="avSend" disabled>Send</button></div>`, { width: 760 });
@@ -44,8 +47,8 @@ Write the email body.`;
     // Buttons are greyed out until they can work, so no error pop-ups are needed.
     function sync() {
       const n = selected().length;
-      draftBtn.disabled = drafting || !n;
-      sendBtn.disabled = drafting || !n || !ta.value.trim();
+      draftBtn.disabled = drafting || !n;          // the AI drafts from ticked issues
+      sendBtn.disabled = drafting || !ta.value.trim();   // a message can be sent with or without issues
       draftBtn.textContent = ta.value.trim() ? '✨ Draft again' : '✨ Draft email';
     }
     body.querySelectorAll('#avIssues input').forEach(i => i.onchange = sync);
@@ -75,7 +78,7 @@ Write the email body.`;
     sendBtn.onclick = () => {
       const issues = selected();
       const text = ta.value.trim();
-      if (!issues.length || !text) return;
+      if (!text) return;
       const vs = QP.vendorState(V.id);
       vs.sent = vs.sent || [];
       const at = new Date().toISOString();
