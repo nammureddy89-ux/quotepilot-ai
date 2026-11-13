@@ -5,7 +5,7 @@
 // If a model is busy (503), over its free limit (429), missing (404) or has a server error (500),
 // we wait briefly and try the next model. Free-tier limits are per model, so another model often works.
 
-const FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 const TIME_BUDGET_MS = 240000; // stay under Vercel's 300 s limit (vercel.json)
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -77,10 +77,11 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const msg = lastStatus === 429
-    ? 'AI free-tier limit reached on all models. Wait a minute and press Retry.'
-    : (lastStatus === 503 || lastStatus === 500)
-      ? 'Google\'s AI models are busy right now. Wait a minute and press Retry.'
-      : lastError;
-  res.status(lastStatus >= 400 ? lastStatus : 500).json({ error: `${msg} (tried: ${tried.join(', ')})` });
+  // Friendly message only. The browser retries automatically for 'busy'.
+  const busy = [429, 500, 503, 504].includes(lastStatus) || /high demand|overloaded|unavailable/i.test(lastError);
+  console.error('AI failed', lastStatus, lastError, tried.join(', '));
+  res.status(busy ? 503 : (lastStatus >= 400 ? lastStatus : 500)).json({
+    error: busy ? 'The AI is busy right now.' : 'The AI could not read this reply.',
+    busy
+  });
 };

@@ -43,6 +43,8 @@ window.QP = window.QP || {};
 
     if (prep.kind === 'excel') {
       const refs = [...loc.matchAll(/\b([A-Z]{1,2})(\d{1,4})\b/g)].map(m => m[0]);
+      const rowM = loc.match(/row\s*(\d+)/i); const hitRow = !refs.length && rowM ? Number(rowM[1]) : null;
+      const sheetM = loc.match(/sheet\s*"?([^,"]+?)"?(,|\s+row|\s+cell|$)/i);
       view.innerHTML = prep.view.sheets.map(sh => {
         const colN = sh.cols;
         const letters = Array.from({ length: colN }, (_, i) => XLSX.utils.encode_col(sh.startCol + i));
@@ -50,7 +52,8 @@ window.QP = window.QP || {};
           sh.rows.map(r => `<tr><th>${r.r}</th>${r.cells.map((c, i) => {
             const addr = letters[i] + r.r;
             const v = c ? c.v : '';
-            const hit = refs.includes(addr) || (!refs.length && c && quoteHit(String(v), src.quote) && String(v).length > 3);
+            const sheetOk = !sheetM || norm(sheetM[1]) === norm(sh.name) || prep.view.sheets.length === 1;
+            const hit = sheetOk && (refs.includes(addr) || (hitRow && r.r === hitRow && c && v !== '') || (!refs.length && !hitRow && c && quoteHit(String(v), src.quote) && String(v).length > 3));
             return `<td class="${hit ? 'hit' : ''}">${esc(v == null ? '' : v)}</td>`;
           }).join('')}</tr>`).join('') + '</table></div>';
       }).join('');

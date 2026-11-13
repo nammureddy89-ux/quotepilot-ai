@@ -9,17 +9,18 @@ Hard rules:
 - Report values exactly as written by the vendor: the number, its unit basis and currency. Do NOT convert units, currencies or remove GST. Do NOT do arithmetic.
 - Never invent or guess a value. If a value is missing, smudged, cut off or unreadable, say so (price_status "unreadable" or "not_quoted") and leave price_value null.
 - If a document has both a price excluding GST and a price including GST, report the price EXCLUDING GST and set includes_gst=false.
-- Every value you report must have a source: which file and where (sheet+cell, page, paragraph/table row, email line, or photo position) plus a short verbatim quote (max 15 words).
+- Every value you report must have a source: which file and where, plus a short verbatim quote (max 15 words). Location formats: Excel → "Sheet <name>, cell <A1-ref of the value>" (e.g. "Sheet Quotation, cell G17"); PDF → "Page <n>, <table row / paragraph / footnote>"; Word → the label shown, e.g. "Table 1, row 8" or "Paragraph 9"; email/text → "Line <n>" as labelled; photo → "Row <n>, <column>, <where on the image>".
 - Match vendor items to the buyer's RFx lines using line numbers if the vendor gives them, otherwise by size + ply + delivery plant. Say how you matched. If unsure, set match_confidence "low".
 - If the vendor states a rule that applies to several lines (e.g. "Rs 42/kg for 5-ply"), apply it to every RFx line it covers, one entry per line, quoting the rule as the source.
 - If the vendor refers to something outside the documents (e.g. "same as last year", "as per previous rate"), do NOT supply a number: set price_status "reference_only" and copy the wording into reference_text.
 - Clarity: "clear" = read with certainty; "unclear" = readable but some doubt (blur, angle, ambiguous wording); "unreadable" = cannot be read.
+- Money thresholds must be full numbers in the stated currency (e.g. "₹1.5 crore" → 15000000, "₹40 lakh" → 4000000); keep the original words in "text".
 - Output JSON only, matching the schema exactly.`;
 
   function schemaText() {
     return `Return JSON with this shape:
 {
-  "vendor_name_in_documents": string,
+  "vendor_name_in_documents": string,         // company name printed on the quote / letterhead / signature
   "quote_reference": string|null,
   "quote_date": string|null,
   "lines": [
@@ -87,7 +88,7 @@ ${rows}
 Questionnaire asked: ${rfx.questionnaire.map(q => q.text).join(' / ')}`;
   }
 
-  QP.extractVendor = async function (vendorId) {
+  QP.extractVendor = async function (vendorId, opts = {}) {
     const vs = QP.vendorState(vendorId);
     const rfx = QP.state.rfx;
     if (!vs.files.length) throw new Error('No reply has been added for this vendor yet.');
@@ -97,7 +98,7 @@ Questionnaire asked: ${rfx.questionnaire.map(q => q.text).join(' / ')}`;
       parts.push(...prep.aiParts);
     }
     parts.push({ type: 'text', text: schemaText() });
-    const { data, model } = await QP.callAI({ system: SYSTEM, parts, json: true });
+    const { data, model } = await QP.callAI({ system: SYSTEM, parts, json: true, signal: opts.signal, onStatus: opts.onStatus });
     if (!data || !Array.isArray(data.lines)) throw new Error('The AI answer was missing the line items. Press Retry.');
     return { data, model };
   };

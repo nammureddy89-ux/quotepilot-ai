@@ -42,13 +42,24 @@ window.QP = window.QP || {};
   QP.closeModal = () => { document.getElementById('modalRoot').innerHTML = ''; };
   document.addEventListener('keydown', e => { if (e.key === 'Escape') QP.closeModal(); });
 
+  // In-app confirmation (browser pop-ups are blocked in some browsers). Resolves true/false.
+  QP.confirmBox = function (title, message, yesLabel = 'Yes', danger = false) {
+    return new Promise(resolve => {
+      const body = QP.modal(title, `<p style="margin:0 0 16px">${message}</p><div class="row" style="justify-content:flex-end"><button class="btn" data-no>Cancel</button><button class="btn ${danger ? 'danger-solid' : 'primary'}" data-yes>${yesLabel}</button></div>`, { width: 460 });
+      const done = v => { QP.closeModal(); resolve(v); };
+      body.querySelector('[data-yes]').onclick = () => done(true);
+      body.querySelector('[data-no]').onclick = () => done(false);
+      body.closest('.modal-bg').addEventListener('click', e => { if (e.target.classList.contains('modal-bg') || e.target.hasAttribute('data-close')) resolve(false); });
+    });
+  };
+
   QP.toast = function (msg, ms = 3200) {
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
     document.body.appendChild(t); setTimeout(() => t.remove(), ms);
   };
 
   document.getElementById('resetBtn').addEventListener('click', async () => {
-    if (!confirm('Clear all vendor replies, AI results and your decisions in this browser?')) return;
+    if (!confirm('Clear all vendor replies, AI results and your decisions in this browser?')) return; // #1 pending approval
     await QP.resetAll(); QP.toast('Demo reset.'); QP.go('responses');
   });
 
