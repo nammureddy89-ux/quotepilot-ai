@@ -240,7 +240,17 @@ window.QP = window.QP || {};
       const fs = q.food_safe_inks || {};
       if (fs.answer !== 'yes') addFlag(vo, { type: 'inks', line: null, sev: 'yellow', title: 'Food-safe inks not confirmed', detail: fs.answer === 'no' ? 'Vendor says no.' : 'Not answered. Needed for printed boxes.', source: fs.source, actions: ['confirm', 'ask'] });
 
-      (ex.conflicts || []).forEach((cf, i) => addFlag(vo, { type: 'conflict' + i, line: cf.rfx_line || null, sev: 'red', title: 'Conflicting information', detail: cf.description, source: (cf.sources || [])[0] || null, actions: ['confirm', 'correct', 'ask'] }));
+      // Safety net: a "conflict" that is really a difference from the RFx (currency, ex-works/freight, GST, unit)
+      // is already covered by our own rules above — show it once, not twice.
+      const RFX_DIFF = { currency: /\b(usd|inr|eur|currency|dollar|rupee)/i, freight: /(ex[- ]?works|freight|landed|delivered|transport)/i, gst: /\bgst\b|\btax/i, unit: /(per\s*kg|\/kg|per\s*100\b|per\s*1,?000|unit|per piece|per box)/i };
+      const covered = { currency: !!currencyHit, freight: vo.flags.some(f => /^freight/.test(f.type)), gst: gstHit, unit: !!(Object.keys(unitGroups).length || perKgLines.length) };
+      (ex.conflicts || []).forEach((cf, i) => {
+        const d = String(cf.description || '');
+        if (Object.keys(RFX_DIFF).some(k => covered[k] && RFX_DIFF[k].test(d)) && !/\d[\d,.]*\s*(vs|versus|but|while)/i.test(d)) return;
+        const line = cf.rfx_line || null;
+        // "Enter correct value" only makes sense when the conflict is about one item's price
+        addFlag(vo, { type: 'conflict' + i, line, sev: 'red', title: 'Conflicting information', detail: d, source: (cf.sources || [])[0] || null, actions: line ? ['confirm', 'correct', 'ask'] : ['confirm', 'ask'] });
+      });
     });
 
     // ---------- unusual prices (needs all vendors) ----------
@@ -301,6 +311,13 @@ window.QP = window.QP || {};
       // Conditional discounts: shown beside the totals, never baked into them (Award decides the split).
       vo.discounts = ((vo.ex.commercial_terms || {}).discounts || []).filter(d => d && d.percent && d.condition_type === 'annual_order_value_above' && QP.thresholdRupees(d))
         .map(d => { const threshold = QP.thresholdRupees(d); const met = full > threshold; return { percent: d.percent, threshold, text: d.text, met, saving: met ? full * d.percent / 100 : 0 }; });
+      // "If this vendor got every item it priced": goods + freight − conditional discount (when its condition is met)
+      const discAmt = (vo.discounts || []).filter(d => d.met).reduce((a, d) => a + d.saving, 0);
+      const ly = lines.reduce((a, L) => { const c = vo.cells[L.line]; return c.value != null && L.lastYear ? { v: a.v + c.value * L.qty, ly: a.ly + L.lastYear * L.qty } : a; }, { v: 0, ly: 0 });
+      vo.landed = { goods: full, freight: vo.freight.amount, discount: discAmt,
+        total: vo.freight.amount == null ? null : full + vo.freight.amount - discAmt,
+        gstOnGoods: (full - discAmt) * rfx.gstRate,
+        vsLastYear: ly.ly ? (ly.v - ly.ly) / ly.ly : null };
       vo.openRed = vo.flags.filter(f => f.open && f.sev === 'red').length;
       vo.openYellow = vo.flags.filter(f => f.open && f.sev === 'yellow').length;
     });

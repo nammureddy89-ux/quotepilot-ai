@@ -15,6 +15,7 @@ Hard rules:
 - If the vendor refers to something outside the documents (e.g. "same as last year", "as per previous rate"), do NOT supply a number: set price_status "reference_only" and copy the wording into reference_text.
 - Clarity: "clear" = read with certainty; "unclear" = readable but some doubt (blur, angle, ambiguous wording); "unreadable" = cannot be read.
 - Money thresholds must be full numbers in the stated currency (e.g. "₹1.5 crore" → 15000000, "₹40 lakh" → 4000000); keep the original words in "text".
+- "conflicts" means ONLY contradictions inside the vendor's own documents (e.g. a price in the table differs from the price in the text, two different payment terms). Do NOT report differences from what the buyer's RFx asked for (other currency, ex-works instead of delivered, per kg instead of per piece, GST included, missing items) as conflicts — report those facts in their normal fields; the buyer's rules handle them.
 - Output JSON only, matching the schema exactly.`;
 
   function schemaText() {
@@ -70,7 +71,7 @@ Hard rules:
       "valid_until": string|null,             // ISO date YYYY-MM-DD if a validity date is printed
       "summary": string }
   ],
-  "conflicts": [ { "description": string, "rfx_line": number|null, "sources": [ {"file": string, "location": string, "quote": string} ] } ],
+  "conflicts": [ { "description": string, "rfx_line": number|null, "sources": [ {"file": string, "location": string, "quote": string} ] } ],   // ONLY contradictions within the vendor's own documents; never differences from the RFx
   "notes": [ string ]                          // anything else the buyer should know (e.g. "subject to artwork approval")
 }
 "lines" must contain one entry for EVERY RFx line the vendor priced, referred to, or which is unreadable. RFx lines the vendor did not address at all go in "not_quoted" (reason null if no reason given).`;

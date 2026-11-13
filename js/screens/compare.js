@@ -12,14 +12,17 @@ QP.screens = QP.screens || {};
     if (!vo.processed) return `<td class="cell gap">—</td>`;
     const c = vo.cells[L.line];
     const flags = c.flagIds.map(fid => m.flags.find(f => f.id === fid)).filter(f => f && f.open);
-    const cls = flags.some(f => f.sev === 'red') ? 'red' : flags.length ? 'amber' : '';
+    const sev = flags.some(f => f.sev === 'red') ? 'red' : flags.length ? 'amber' : '';
+    const cls = '';
+    // a small marker INSIDE the cell, right before the value, so it clearly belongs to this number
+    const mk = sev ? `<span class="mk mk-${sev}" title="${sev === 'red' ? 'Needs your decision' : 'Worth a look'}">●</span>` : '';
     const best = m.cheapest[L.line] && m.cheapest[L.line].id === id && c.value != null;
     if (c.value == null) {
       const label = { not_quoted: 'not quoted', unreadable: 'unreadable', reference: '“same as last yr”', unit_problem: 'unit unclear' }[c.status] || 'missing';
-      return `<td class="cell gap ${cls}" data-c="${id}|${L.line}"><span class="small">${label}</span></td>`;
+      return `<td class="cell gap ${cls}" data-c="${id}|${L.line}">${mk}<span class="small">${label}</span></td>`;
     }
     const badges = c.badges.filter(b => BADGE[b]).map(b => `<span class="badge b-${b}">${BADGE[b]}</span>`).join('');
-    return `<td class="cell ${cls} ${best ? 'best' : ''}" data-c="${id}|${L.line}"><span class="v">${QP.fmt(c.value)}</span>${badges}</td>`;
+    return `<td class="cell ${cls} ${best ? 'best' : ''}" data-c="${id}|${L.line}">${mk}<span class="v">${QP.fmt(c.value)}</span>${badges}</td>`;
   }
 
   function openCell(m, id, line) {
@@ -52,29 +55,39 @@ QP.screens = QP.screens || {};
     const foot = (label, fn, cls = '') => `<tr><td class="l" colspan="2">${label}</td><td class="num"></td>${ids.map(id => `<td class="num ${cls}">${m.vendors[id].processed ? fn(m.vendors[id]) : ''}</td>`).join('')}</tr>`;
     const minOf = key => Math.min(...m.processedIds.map(id => m.vendors[id].totals[key]).filter(v => v > 0));
     const lflMin = minOf('likeForLike');
-    return `
+    const anyDisc = m.processedIds.some(id => (m.vendors[id].discounts || []).length);
+    const gst = QP.state.rfx.gstRate * 100;
+    const pct = x => (x > 0 ? '+' : '') + QP.fmt(x * 100, 1) + '%';
+    // Summary first: one card per vendor, totals read before the 30 lines
+    const strip = `<div class="small muted" style="margin-bottom:6px">Landed total before GST, if each vendor got every item it priced (prices + freight − discount when its condition is met). The split between vendors is decided in Award.</div><div class="vsum">${m.processedIds.map(id => { const v = m.vendors[id];
+      return `<div class="vcard"><div class="vn">${esc(v.name)}</div>
+        <div class="vt">${v.landed.total == null ? '<span style="color:var(--red)">Incomplete</span>' : QP.fmtCr(v.landed.total)}</div>
+        ${v.landed.total == null ? '<div class="small muted">freight amount unknown</div>' : ''}
+        <div class="vm">${v.landed.vsLastYear != null ? `<span style="color:${v.landed.vsLastYear <= 0 ? 'var(--green)' : 'var(--red)'}">${pct(v.landed.vsLastYear)}</span> prices vs last year · ` : ''}${v.totals.quoted}/30 quoted${v.totals.estimates ? ` + ${v.totals.estimates} est.` : ''}</div>
+        <div class="vm">${v.landed.discount ? `incl. −${QP.fmtL(v.landed.discount)} discount · ` : ''}${v.openRed ? `<a href="#" data-goissues="${v.id}" style="color:var(--red)">${v.openRed} 🔴 open</a>` : '<span class="tile-ok">✓ no must-resolve</span>'}</div></div>`; }).join('')}</div>`;
+    return `${strip}
       <div class="legend-bar">
-        <span><i class="lg lg-red"></i>Red edge = needs your decision</span>
-        <span><i class="lg lg-amber"></i>Orange edge = worth a look</span>
+        <span><span class="mk mk-red">●</span>needs your decision</span>
+        <span><span class="mk mk-amber">●</span>worth a look</span>
         <span><span class="lg-best">12.34</span> cheapest on the line</span>
         <span><span class="badge b-converted">conv</span> converted from the vendor's unit / currency (click to see the maths)</span>
         <span><span class="badge b-buyer_assumption">your estimate</span> entered by you — not a quote, never “cheapest”, not in like-for-like</span>
         <span class="muted">Click any number to see where it came from.</span>
       </div>
       <div class="gridwrap"><table class="grid">
-        <thead><tr><th class="l">#</th><th class="l">Item · plant · qty/yr</th><th>Last year</th>${ids.map(id => { const vo = m.vendors[id]; return `<th style="white-space:normal;min-width:110px">${esc(vo.name)}<div class="small muted" style="font-weight:400">${vo.processed ? vo.totals.quoted + '/30 quoted' + (vo.totals.estimates ? ` · <span style="color:var(--violet)">${vo.totals.estimates} your estimate</span>` : '') : 'not processed'}</div>${(vo.discounts || []).map(d => `<div class="disc-chip" title="${esc(d.text)}">${d.percent}% off if order &gt; ${QP.fmtCr(d.threshold)} · applied in Award</div>`).join('')}</th>`; }).join('')}</tr></thead>
+        <thead><tr><th class="l">#</th><th class="l">Item · plant · qty/yr</th><th>Last year</th>${ids.map(id => { const vo = m.vendors[id]; return `<th style="white-space:normal;min-width:110px">${esc(vo.name)}<div class="small muted" style="font-weight:400">${vo.processed ? vo.totals.quoted + '/30 quoted' + (vo.totals.estimates ? ` · <span style="color:var(--violet)">${vo.totals.estimates} your estimate</span>` : '') : 'not processed'}</div>${(vo.discounts || []).map(d => `<div class="disc-chip" title="${esc(d.text)}">${d.percent}% off if order &gt; ${QP.fmtCr(d.threshold)}</div>`).join('')}</th>`; }).join('')}</tr></thead>
         <tbody>${lines.map(L => `<tr><td class="l">${L.line}</td><th>${esc(L.desc)}<span class="sub">${L.ply}-ply · ${esc(L.plant.split(' ')[0])} · ${(L.qty / 1000).toLocaleString('en-IN')}k/yr</span></th><td class="num muted">${L.lastYear ? QP.fmt(L.lastYear) : 'new'}</td>${ids.map(id => cellHtml(m, id, L)).join('')}</tr>`).join('')}</tbody>
         <tfoot>
-          ${foot('Coverage', v => `${v.totals.quoted}/30 quoted${v.totals.estimates ? ` <div class="small" style="color:var(--violet)">+ ${v.totals.estimates} your estimate</div>` : ''}${v.totals.missing ? ` <span style="color:var(--red)">⚠ ${v.totals.missing} missing</span>` : ''}`)}
-          ${foot(`Like-for-like total <span class="small muted">(${lflN} lines every vendor priced)</span>`, v => `<span style="${v.totals.likeForLike === lflMin ? 'color:var(--green)' : ''}">${QP.fmtCr(v.totals.likeForLike)}</span>`)}
-          ${foot('Full total, priced lines only', v => QP.fmtCr(v.totals.full) + (v.totals.estimates ? `<div class="small" style="color:var(--violet)">includes ${QP.fmtL(v.totals.estimateValue)} of your estimates</div>` : '') + (v.totals.missing ? `<div class="small" style="color:var(--red)">${v.totals.missing} ${v.totals.missing === 1 ? 'line' : 'lines'} not in total</div>` : ''))}
-          ${m.processedIds.some(id => (m.vendors[id].discounts || []).length) ? foot('Conditional discount <span class="small muted">(not in the totals above)</span>', v => (v.discounts || []).map(d => d.met
-            ? `<span style="color:var(--green)">−${QP.fmtL(d.saving)}</span><div class="small muted">if ${esc(v.name.split(' ')[0])} wins all lines it priced (${QP.fmtCr(v.totals.full)} &gt; ${QP.fmtCr(d.threshold)}, condition met)</div>`
-            : `<span class="muted">not reached</span><div class="small muted">even with all its lines: ${QP.fmtCr(v.totals.full)} &lt; ${QP.fmtCr(d.threshold)}</div>`).join('') || '') : ''}
-          ${foot('Freight', v => v.freight.amount == null ? '<span style="color:var(--red)">extra — amount unknown</span>' : v.freight.kind === 'included' ? '<span class="muted">included</span>' : `+ ${QP.fmtL(v.freight.amount)} <span class="small muted">est.</span> <button class="icon-btn" title="How this is calculated" data-freight="${v.id}">ⓘ</button>`)}
-          ${foot('Landed total', v => v.freight.amount == null ? '<span style="color:var(--red)">incomplete</span>' : QP.fmtCr(v.totals.full + v.freight.amount))}
-          ${foot(`Priced lines incl. ${QP.state.rfx.gstRate * 100}% GST <span class="small muted">(cash outlay, before freight; GST recoverable as input credit)</span>`, v => QP.fmtCr(v.totals.full * (1 + QP.state.rfx.gstRate)))}
-          ${foot('Must-resolve issues', v => v.openRed ? `<a href="#" data-goissues="${v.id}" style="color:var(--red)">${v.openRed} open</a>` : '<span class="tile-ok">✓ resolved</span>')}
+          ${foot(`<b>Priced items</b>`, v => `${QP.fmtCr(v.totals.full)}<div class="small muted">${v.totals.quoted}/30 quoted</div>` + (v.totals.estimates ? `<div class="small" style="color:var(--violet)">incl. ${v.totals.estimates} your estimate (${QP.fmtL(v.totals.estimateValue)})</div>` : '') + (v.totals.missing ? `<div class="small" style="color:var(--red)">${v.totals.missing} not quoted — not in total</div>` : ''))}
+          ${foot('+ Freight', v => v.freight.amount == null ? '<span style="color:var(--red)">extra — amount unknown</span>' : v.freight.kind === 'included' ? '<span class="muted">included</span>' : `+ ${QP.fmtL(v.freight.amount)} <span class="small muted">est.</span> <button class="icon-btn" title="How this is calculated" data-freight="${v.id}">ⓘ</button>`)}
+          ${anyDisc ? foot('− Conditional discount', v => (v.discounts || []).map(d => d.met
+            ? `<span style="color:var(--green)">−${QP.fmtL(d.saving)}</span><div class="small muted">${d.percent}% · condition met (order &gt; ${QP.fmtCr(d.threshold)})</div>`
+            : `<span class="muted">not reached</span><div class="small muted">${d.percent}% needs order &gt; ${QP.fmtCr(d.threshold)}</div>`).join('') || '<span class="muted">none</span>') : ''}
+          <tr class="sum"><td class="l" colspan="2"><b>= Landed total, before GST</b><div class="small muted" style="font-weight:400">if the vendor gets every item it priced</div></td><td></td>${ids.map(id => { const v = m.vendors[id]; return `<td class="num">${!v.processed ? '' : v.landed.total == null ? '<span style="color:var(--red)">incomplete</span><div class="small muted">freight unknown</div>' : `<b>${QP.fmtCr(v.landed.total)}</b>`}</td>`; }).join('')}</tr>
+          ${foot(`Incl. ${gst}% GST on boxes <span class="small muted">(cash outlay; GST recoverable)</span>`, v => v.landed.total == null ? `<span class="muted">${QP.fmtCr(v.landed.goods - v.landed.discount + v.landed.gstOnGoods)}</span><div class="small muted">boxes only</div>` : QP.fmtCr(v.landed.total + v.landed.gstOnGoods))}
+          <tr class="gap-row"><td colspan="${3 + ids.length}"></td></tr>
+          ${foot(`Fair comparison <span class="small muted">— prices of the ${lflN} items every vendor quoted</span>`, v => `<span style="${v.totals.likeForLike === lflMin ? 'color:var(--green);font-weight:650' : ''}">${QP.fmtCr(v.totals.likeForLike)}</span>`)}
+          ${foot('Must-resolve issues', v => v.openRed ? `<a href="#" data-goissues="${v.id}" style="color:var(--red)">${v.openRed} open</a>` : '<span class="tile-ok">✓ none</span>')}
         </tfoot></table></div>
       <p class="small muted">Last year's contract: ${QP.fmtCr(m.lastYear.full)}.</p>`;
   }

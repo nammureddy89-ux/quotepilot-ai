@@ -92,8 +92,6 @@ td.cell:hover { background: #f5f8ff; }
 td.cell.best { background: var(--green-soft); }
 td.cell.best .v { color: var(--green); font-weight: 650; }
 td.cell.gap { color: var(--muted); }
-td.cell.red { box-shadow: inset 3px 0 0 var(--red); }
-td.cell.amber { box-shadow: inset 3px 0 0 #f79009; }
 .badge { font-size: 10px; padding: 0 5px; border-radius: 4px; margin-left: 4px; vertical-align: 1px; }
 .b-converted { background: var(--brand-soft); color: var(--brand); }
 .b-buyer_assumption { background: var(--violet-soft); color: var(--violet); }
@@ -189,3 +187,13 @@ table.grid thead th { white-space: normal; }
 .kpi .cnt { font-size: 14px; font-weight: 500; line-height: 1.6; }
 .kpi .cnt b { font-size: 16px; }
 .kpi .cnt.r b { color: var(--red); } .kpi .cnt.y b { color: var(--amber); } .kpi .cnt.z { color: #98a2b3; }
+
+.mk { font-size: 9px; margin-right: 5px; vertical-align: 2px; }
+.mk-red { color: var(--red); } .mk-amber { color: #f79009; }
+.vsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.vcard { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.vcard .vn { font-size: 12px; color: var(--muted); font-weight: 600; }
+.vcard .vt { font-size: 19px; font-weight: 650; margin: 2px 0; }
+.vcard .vm { font-size: 12px; margin-top: 4px; }
+table.grid tfoot tr.sum td { background: #eef2ff; border-top: 2px solid #c7d2fe; font-size: 14px; }
+table.grid tfoot tr.gap-row td { background: #fff; padding: 4px; border: 0; }
