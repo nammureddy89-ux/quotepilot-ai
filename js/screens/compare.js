@@ -73,6 +73,7 @@ QP.screens = QP.screens || {};
             : `<span class="muted">not reached</span><div class="small muted">even with all its lines: ${QP.fmtCr(v.totals.full)} &lt; ${QP.fmtCr(d.threshold)}</div>`).join('') || '') : ''}
           ${foot('Freight', v => v.freight.amount == null ? '<span style="color:var(--red)">extra — amount unknown</span>' : v.freight.kind === 'included' ? '<span class="muted">included</span>' : `+ ${QP.fmtL(v.freight.amount)} <span class="small muted">est.</span> <button class="icon-btn" title="How this is calculated" data-freight="${v.id}">ⓘ</button>`)}
           ${foot('Landed total', v => v.freight.amount == null ? '<span style="color:var(--red)">incomplete</span>' : QP.fmtCr(v.totals.full + v.freight.amount))}
+          ${foot(`Priced lines incl. ${QP.state.rfx.gstRate * 100}% GST <span class="small muted">(cash outlay, before freight; GST recoverable as input credit)</span>`, v => QP.fmtCr(v.totals.full * (1 + QP.state.rfx.gstRate)))}
           ${foot('Must-resolve issues', v => v.openRed ? `<a href="#" data-goissues="${v.id}" style="color:var(--red)">${v.openRed} open</a>` : '<span class="tile-ok">✓ resolved</span>')}
         </tfoot></table></div>
       <p class="small muted">Last year's contract: ${QP.fmtCr(m.lastYear.full)}.</p>`;
@@ -126,7 +127,7 @@ QP.screens = QP.screens || {};
     }
     const red = m.flags.filter(f => f.open && f.sev === 'red').length;
     main.innerHTML = `
-      <div class="head"><div><h1>Compare quotes</h1><p>All prices in <b>₹ per piece, before GST</b>. ${red ? `<a href="#" data-allissues style="color:var(--red)">${red} must-resolve issues open →</a>` : '<span class="tile-ok">✓ No open must-resolve issues</span>'}</p></div>
+      <div class="head"><div><h1>Compare quotes</h1><p>All prices in <b>₹ per piece, before GST</b> (${QP.state.rfx.gstRate * 100}%, recoverable). ${red ? `<a href="#" data-allissues style="color:var(--red)">${red} must-resolve issues open →</a>` : '<span class="tile-ok">✓ No open must-resolve issues</span>'}</p></div>
         <div class="actions"><button class="btn" id="csvBtn">Download CSV</button></div></div>
       <div class="tabs"><button data-t="prices" class="${tab === 'prices' ? 'on' : ''}">Prices (30 lines)</button><button data-t="q" class="${tab === 'q' ? 'on' : ''}">Questionnaire, terms &amp; documents</button></div>
       ${tab === 'prices' ? pricesTab(m) : qTab(m)}`;

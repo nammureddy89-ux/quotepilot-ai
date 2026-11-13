@@ -185,3 +185,7 @@ table.grid thead th { white-space: normal; }
 .actform input { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 160px; margin-top: 2px; }
 .actform input.reason { width: 100%; }
 .actform label.small { color: #344054; }
+
+.kpi .cnt { font-size: 14px; font-weight: 500; line-height: 1.6; }
+.kpi .cnt b { font-size: 16px; }
+.kpi .cnt.r b { color: var(--red); } .kpi .cnt.y b { color: var(--amber); } .kpi .cnt.z { color: #98a2b3; }

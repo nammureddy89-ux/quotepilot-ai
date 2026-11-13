@@ -33,8 +33,8 @@ Write the email body.`;
         <div class="k">Subject</div><div><input id="avSubj" class="btn" style="width:100%;text-align:left;cursor:text" value="Clarification on your quotation — RFx ${esc(QP.state.rfx.id)}"></div></div>
       <div class="small muted" style="margin-bottom:4px">Tick the issues to ask about, then click <b>Draft email</b>:</div>
       <div id="avIssues" style="margin-bottom:10px">${askable.map(f => `<label style="display:block;margin:3px 0"><input type="checkbox" value="${esc(f.id)}" ${f.id === flag.id ? 'checked' : ''}> <span class="dot-inline" style="color:${f.sev === 'red' ? 'var(--red)' : 'var(--amber)'}">●</span> ${esc(f.title)}${f.line ? ' · line ' + f.line : ''}</label>`).join('')}</div>
-      <div class="row" style="margin-bottom:8px"><button class="btn primary" id="avDraft">✨ Draft email</button><a href="#" id="avOwn" class="small">or write it yourself</a><span id="avStatus" class="small muted"></span><span class="grow"></span><span id="avModel" class="small muted" style="cursor:help;display:none">ⓘ</span></div>
-      <textarea class="paste" id="avBody" style="display:none"></textarea>
+      <div class="row" style="margin-bottom:8px"><button class="btn primary" id="avDraft">✨ Draft email</button><span id="avStatus" class="small muted"></span><span class="grow"></span><span id="avModel" class="small muted" style="cursor:help;display:none">ⓘ</span></div>
+      <textarea class="paste" id="avBody" placeholder="Click “Draft email”, or type your message here."></textarea>
       <div class="row" style="margin-top:10px"><span class="small muted">Email delivery is simulated in this prototype.</span><span class="grow"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="avSend" disabled>Send</button></div>`, { width: 760 });
 
     const selected = () => [...body.querySelectorAll('#avIssues input:checked')].map(i => m.flags.find(f => f.id === i.value)).filter(Boolean);
@@ -50,13 +50,12 @@ Write the email body.`;
     }
     body.querySelectorAll('#avIssues input').forEach(i => i.onchange = sync);
     ta.oninput = sync;
-    body.querySelector('#avOwn').onclick = e => { e.preventDefault(); ta.style.display = ''; ta.focus(); };
 
     // Drafting starts only when the buyer asks for it, with the issues she ticked.
     async function draft() {
       const issues = selected();
       if (!issues.length) return;
-      drafting = true; sync(); ta.style.display = '';
+      drafting = true; sync();
       status.innerHTML = '<span class="spinner"></span> Drafting…';
       try {
         const r = await aiDraft(V, issues);

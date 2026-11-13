@@ -54,7 +54,7 @@ QP.screens = QP.screens || {};
     const just = QP.justDone[f.id] && d;
     return `<div class="flag ${just ? 'just' : d && d.action !== 'ask' ? 'done' : ''}" data-flag="${esc(f.id)}">
       <div><div class="dot ${f.sev}"></div></div>
-      <div><div class="row"><span class="title">${esc(f.title)}</span><span class="pill grey">${esc(V.name)}</span>${f.line ? `<span class="pill grey">Line ${f.line}</span>` : ''}${f.groupLines ? `<span class="pill grey">${f.groupLines.length} lines</span>` : ''}${src}</div>
+      <div><div class="row"><span class="title">${esc(f.title)}</span><span class="pill grey">${esc(V.name)}</span>${f.groupLines ? `<span class="pill grey">${f.groupLines.length} lines</span>` : ''}${src}</div>
       <div style="margin-top:4px">${esc(f.detail)}</div>${act}</div></div>`;
   }
 
@@ -88,7 +88,7 @@ QP.screens = QP.screens || {};
         <div class="kpi"><div class="l">Must resolve (all vendors)</div><div class="v">${allRed ? `<span style="color:var(--red)">${allRed}</span>` : '<span class="tile-ok">✓ All resolved</span>'}</div></div>
         ${m.processedIds.map(id => { const vo = m.vendors[id];
           const val = !vo.openRed && !vo.openYellow ? '<span class="tile-ok">✓ All resolved</span>'
-            : [vo.openRed ? `<span style="color:var(--red)">${vo.openRed} 🔴</span>` : '<span class="tile-ok">✓ No must-resolve</span>', vo.openYellow ? `<span style="color:var(--amber)">${vo.openYellow} 🟡</span>` : '<span class="tile-ok">✓ No checks</span>'].join(' · ');
+            : `<div class="cnt ${vo.openRed ? 'r' : 'z'}">🔴 <b>${vo.openRed}</b> must resolve</div><div class="cnt ${vo.openYellow ? 'y' : 'z'}">🟡 <b>${vo.openYellow}</b> worth a check</div>`;
           return `<div class="kpi"><div class="l">${esc(vo.name)}</div><div class="v" style="font-size:16px">${val}</div></div>`; }).join('')}
       </div>
       <div class="tabs" id="sevTabs">
@@ -99,11 +99,9 @@ QP.screens = QP.screens || {};
         <span class="grow"></span>
         <select id="vfilter" class="btn sm"><option value="all">All vendors</option>${m.processedIds.map(id => `<option value="${id}" ${filter.vendor === id ? 'selected' : ''}>${esc(m.vendors[id].name)}</option>`).join('')}</select>
       </div>
-      ${filter.vendor !== 'all' || filter.sev !== 'open' ? `<div class="filterchip">Showing: ${filter.vendor !== 'all' ? esc(m.vendors[filter.vendor].name) : 'All vendors'} · ${{ open: 'all open issues', red: '🔴 must resolve', yellow: '🟡 worth a check', done: 'resolved' }[filter.sev]} <a href="#" id="showAll">✕ Show all open issues</a></div>` : ''}
       <div class="card">${flags.map(flagHtml).join('') || `<div class="empty">${counts.open || counts.done ? 'No issues match this filter.' : 'Nothing to review. 🎉'}</div>`}</div>`;
 
     main.querySelectorAll('#sevTabs [data-s]').forEach(b => b.onclick = () => { filter.sev = b.dataset.s; QP.render(); });
-    const sa = main.querySelector('#showAll'); if (sa) sa.onclick = e => { e.preventDefault(); filter.vendor = 'all'; filter.sev = 'open'; QP.render(); };
     main.querySelector('#vfilter').onchange = e => { filter.vendor = e.target.value; QP.render(); };
     main.querySelectorAll('[data-flag]').forEach(el => {
       const f = m.flags.find(x => x.id === el.dataset.flag);

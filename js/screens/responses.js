@@ -19,11 +19,6 @@ QP.busy = QP.busy || {};
     const retries = (tm.attempts || 1) - 1;
     return `Read in ${QP.fmtDur(tm.totalMs)}` + (retries ? ` · ${retries} ${retries === 1 ? 'retry' : 'retries'} (AI busy, ${QP.fmtDur(tm.waitedMs)} waiting)` : '');
   };
-  // live "23 s" counter while a vendor is being read
-  setInterval(() => {
-    if (!QP.SHOW_TIMING) return;
-    Object.entries(QP.busy || {}).forEach(([id, b]) => { if (!b) return; const el = document.getElementById('el-' + id); if (el) el.textContent = QP.fmtDur(Date.now() - b.start); });
-  }, 1000);
 
   // Short notes shown inside a vendor's row (instead of a pop-up at the bottom of the page)
   QP.rowNote = QP.rowNote || {};
@@ -275,7 +270,7 @@ QP.busy = QP.busy || {};
         const [cls, label] = STATUS[vs.status] || STATUS.not_responded;
         const vo = QP.model && QP.model.vendors[V.id];
         let status;
-        if (busy) status = `<span class="pill blue"><span class="spinner"></span> AI reading…${QP.SHOW_TIMING ? ` <span id="el-${V.id}">${QP.fmtDur(Date.now() - busy.start)}</span>` : ''}</span><div class="status-line" id="st-${V.id}">${esc(busy.status === 'AI reading…' ? '' : busy.status)}</div><a href="#" class="stoplink" data-stop="${V.id}">Stop reading</a>`;
+        if (busy) status = `<span class="pill blue"><span class="spinner"></span> AI reading…</span><div class="status-line" id="st-${V.id}">${esc(busy.status === 'AI reading…' ? '' : busy.status)}</div><a href="#" class="stoplink" data-stop="${V.id}">Stop reading</a>`;
         else if (queued) status = '<span class="pill grey">⏳ Waiting to be read</span>';
         else {
           status = `<span class="pill ${cls}">${label}</span>`;
