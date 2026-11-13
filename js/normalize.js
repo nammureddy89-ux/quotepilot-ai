@@ -109,10 +109,28 @@ window.QP = window.QP || {};
     });
 
     // ---------- pass 2: flags ----------
+    // The same 🟡 point repeated on many lines (e.g. "read with some doubt" on 26 lines of one email)
+    // becomes ONE vendor-level issue. Only line-specific problems keep their own coloured edge in Compare.
+    const GROUP_MIN = 3;
+    function addGrouped(vo, items, title, opts = {}) {
+      const min = opts.min || GROUP_MIN;
+      if (items.length < min) { items.forEach(f => addFlag(vo, f)); return; }
+      const lines = items.map(f => f.line);
+      const g = addFlag(vo, { type: items[0].type + '_group', line: null, sev: items[0].sev,
+        title: `${title} — ${lines.length} lines`,
+        detail: `Lines ${lines.join(', ')}. ${opts.detail || items[0].detail.replace(/^Line \d+[^.]*\.\s*/, '')}`,
+        source: items[0].source, actions: opts.actions || ['confirm', 'ask'], groupLines: lines });
+      lines.forEach(l => { const c = vo.cells[l]; if (c) (c.groupFlagIds = c.groupFlagIds || []).push(g.id); });
+    }
+
     function addFlag(vo, f) {
       f.vendor = vo.id;
       f.id = `${vo.id}:${f.type}:${f.line == null ? 'x' : f.line}`;
-      const d = decisions[f.id];
+      let d = decisions[f.id];
+      if (f.noAssume && d && d.action === 'assume') {   // an estimate entered before this rule existed no longer counts
+        f.voidedEstimate = d.value; d = null;
+        f.detail += ` Your earlier estimate ₹${fmt(f.voidedEstimate)} is no longer used, because the vendor said it can't supply this line.`;
+      }
       f.decision = d || null;
       f.open = !d || d.action === 'ask';
       vo.flags.push(f); out.flags.push(f);
@@ -123,12 +141,17 @@ window.QP = window.QP || {};
     out.processedIds.forEach(id => {
       const vo = out.vendors[id], ex = vo.ex;
       const unitGroups = {}; let currencyHit = null, gstHit = false, perKgLines = [];
+      const unclearL = [], matchL = [];
 
       rfx.lines.forEach(L => {
         const c = vo.cells[L.line];
         const lineLbl = `Line ${L.line} · ${L.desc} · ${L.plant}`;
         if (c.status === 'not_quoted') {
-          addFlag(vo, { type: 'not_quoted', line: L.line, sev: 'red', title: 'Line not quoted', detail: `${lineLbl}. ${c.reason && c.reason !== 'Vendor did not mention this line' ? 'Reason given: ' + String(c.reason).replace(/\.?$/, '.') : 'Not mentioned by the vendor.'}`, source: c.source, actions: ['confirm_gap', 'assume', 'ask'] });
+          // Vendor gave a reason (e.g. "can't supply — no export certification"): an estimate makes no sense,
+          // because a price would not make the vendor able to supply. Only skipped-without-reason lines can take an estimate.
+          const declined = !!(c.reason && c.reason !== 'Vendor did not mention this line');
+          c.declined = declined;
+          addFlag(vo, { type: 'not_quoted', line: L.line, sev: 'red', title: declined ? 'Vendor cannot supply this line' : 'Line not quoted', detail: `${lineLbl}. ${declined ? 'Reason given: ' + String(c.reason).replace(/\.?$/, '.') : 'Not mentioned by the vendor.'}`, source: c.source, actions: declined ? ['confirm_gap', 'ask'] : ['confirm_gap', 'assume', 'ask'], noAssume: declined });
         } else if (c.status === 'unreadable') {
           addFlag(vo, { type: 'unreadable', line: L.line, sev: 'red', title: 'Price unreadable', detail: `${lineLbl}. ${c.raw && c.raw.clarity_note ? String(c.raw.clarity_note).replace(/\.?$/, '.') + ' ' : ''}No value guessed — check the original.`, source: c.source, actions: ['correct', 'ask'], unitHint: c.raw && c.raw.price_basis });
         } else if (c.status === 'reference') {
@@ -137,8 +160,8 @@ window.QP = window.QP || {};
         } else if (c.status === 'unit_problem') {
           addFlag(vo, { type: 'unit_problem', line: L.line, sev: 'red', title: 'Price could not be converted', detail: `${lineLbl}. ${(c.problems || []).join('; ')}.`, source: c.source, actions: ['correct', 'ask'] });
         } else if (c.status === 'priced') {
-          if (c.raw.clarity === 'unclear') addFlag(vo, { type: 'unclear', line: L.line, sev: 'yellow', title: 'Read with some doubt', detail: `${lineLbl}. Read as ${c.raw.price_value}; ${c.raw.clarity_note || 'not fully clear'}.`, source: c.source, actions: ['confirm', 'correct'] });
-          if (c.raw.match_confidence === 'low') addFlag(vo, { type: 'match', line: L.line, sev: 'yellow', title: 'Item match uncertain', detail: `${lineLbl}. Matched to vendor's “${c.raw.vendor_item_text}”.`, source: c.source, actions: ['confirm', 'correct'] });
+          if (c.raw.clarity === 'unclear') unclearL.push({ type: 'unclear', line: L.line, sev: 'yellow', title: 'Read with some doubt', detail: `${lineLbl}. Read as ${c.raw.price_value}; ${c.raw.clarity_note || 'not fully clear'}.`, source: c.source, actions: ['confirm', 'correct'] });
+          if (c.raw.match_confidence === 'low') matchL.push({ type: 'match', line: L.line, sev: 'yellow', title: 'Item match uncertain', detail: `${lineLbl}. Matched to vendor's “${c.raw.vendor_item_text}”.`, source: c.source, actions: ['confirm', 'correct'] });
           if (c.duplicate) addFlag(vo, { type: 'conflict_line', line: L.line, sev: 'red', title: 'Two different prices for one line', detail: `${lineLbl}. Values found: ${c.duplicate.map(d => d.price_value + ' (' + (d.source && d.source.location) + ')').join(' vs ')}.`, source: c.source, actions: ['confirm', 'correct'] });
           if (c.converted.unit) (unitGroups[c.converted.unit] = unitGroups[c.converted.unit] || []).push(L.line);
           if (c.converted.currency) currencyHit = c.converted.currency;
@@ -151,6 +174,8 @@ window.QP = window.QP || {};
         }
       });
 
+      addGrouped(vo, unclearL, 'Read with some doubt', { actions: ['confirm', 'ask'], detail: `The AI read a number on each of these lines but was not fully sure${unclearL[0] ? ` (e.g. line ${unclearL[0].line}: ${vo.cells[unclearL[0].line].raw.clarity_note || 'not fully clear'})` : ''}. Click a line in Compare to see the source.` });
+      addGrouped(vo, matchL, 'Item match uncertain', { actions: ['confirm', 'ask'], detail: `Matched using the vendor's general wording (e.g. “${(matchL[0] && vo.cells[matchL[0].line].raw.vendor_item_text) || ''}”), not item by item.` });
       Object.entries(unitGroups).forEach(([u, lines]) => addFlag(vo, { type: 'unit_' + u.replace(/\W/g, ''), line: null, sev: 'yellow', title: `Prices quoted ${u} pcs — converted`, detail: `${lines.length} lines converted to ₹ per piece.`, source: vo.cells[lines[0]].source, actions: ['confirm'] }));
       if (currencyHit) addFlag(vo, { type: 'currency', line: null, sev: 'yellow', title: `Quoted in ${currencyHit} — converted`, detail: `Converted at the RFx rate ₹${fmt(rfx.fxRates[currencyHit])} per ${currencyHit}. Real cost moves with the exchange rate.`, source: (ex.lines.find(l => l.currency === currencyHit) || {}).source, actions: ['confirm'] });
       if (gstHit) addFlag(vo, { type: 'gst', line: null, sev: 'yellow', title: 'Prices included GST — removed', detail: `${rfx.gstRate * 100}% GST removed to compare like for like.`, source: null, actions: ['confirm'] });
@@ -219,6 +244,7 @@ window.QP = window.QP || {};
     });
 
     // ---------- unusual prices (needs all vendors) ----------
+    const unusualBy = {};
     QP.state.rfx.lines.forEach(L => {
       out.processedIds.forEach(id => {
         const c = out.vendors[id].cells[L.line];
@@ -228,10 +254,14 @@ window.QP = window.QP || {};
         const reasons = [];
         if (med && Math.abs(c.aiValue - med) / med > UNUSUAL) reasons.push(`${fmt((c.aiValue - med) / med * 100, 0)}% vs other vendors' median ₹${fmt(med)}`);
         if (L.lastYear && Math.abs(c.aiValue - L.lastYear) / L.lastYear > UNUSUAL) reasons.push(`${fmt((c.aiValue - L.lastYear) / L.lastYear * 100, 0)}% vs last year ₹${fmt(L.lastYear)}`);
-        if (reasons.length) addFlag(out.vendors[id], { type: 'unusual', line: L.line, sev: 'yellow', title: 'Unusual price', detail: `Line ${L.line} · ${L.desc}: ₹${fmt(c.aiValue)} is ${reasons.join(' and ')}. Possible misread or different spec.`, source: c.source, actions: ['confirm', 'correct'] });
+        if (reasons.length) (unusualBy[id] = unusualBy[id] || []).push({ type: 'unusual', line: L.line, sev: 'yellow', title: 'Unusual price', detail: `Line ${L.line} · ${L.desc}: ₹${fmt(c.aiValue)} is ${reasons.join(' and ')}. Possible misread or different spec.`, source: c.source, actions: ['confirm', 'correct'] });
       });
     });
+    Object.entries(unusualBy).forEach(([id, items]) => addGrouped(out.vendors[id], items, 'Unusual prices', { min: 5, actions: ['confirm', 'ask'],
+      detail: `More than 30% away from other vendors or last year on many lines, which usually means a systematic difference (unit, spec or conversion) rather than one misread. Click a line in Compare to see its maths.` }));
 
+    // remember what the vendor/AI said before any buyer decision changes the cell
+    out.processedIds.forEach(id => Object.values(out.vendors[id].cells).forEach(c => { c.vendorStatus = c.status; }));
     // ---------- apply buyer decisions to cell values ----------
     out.processedIds.forEach(id => {
       const vo = out.vendors[id];
@@ -249,17 +279,28 @@ window.QP = window.QP || {};
     // ---------- totals ----------
     const lines = rfx.lines;
     const ids = out.processedIds;
-    const allPricedLines = lines.filter(L => ids.length && ids.every(id => out.vendors[id].cells[L.line].value != null)).map(L => L.line);
+    // Your estimates are labelled and kept apart: they never count as quoted, never win "cheapest",
+    // and never enter the like-for-like total (which compares real quotes only).
+    const isEst = c => c.badges.includes('buyer_assumption');
+    out.processedIds.forEach(id => Object.values(out.vendors[id].cells).forEach(c => { c.estimate = isEst(c) && c.value != null; }));
+    const allPricedLines = lines.filter(L => ids.length && ids.every(id => { const c = out.vendors[id].cells[L.line]; return c.value != null && !c.estimate; })).map(L => L.line);
     out.likeForLikeLines = allPricedLines;
     ids.forEach(id => {
       const vo = out.vendors[id];
-      let full = 0, n = 0, boxes = 0, lfl = 0;
+      let full = 0, n = 0, boxes = 0, lfl = 0, est = 0, estValue = 0;
       lines.forEach(L => {
         const c = vo.cells[L.line];
-        if (c.value != null) { full += c.value * L.qty; n++; boxes += L.qty; if (allPricedLines.includes(L.line)) lfl += c.value * L.qty; }
+        if (c.value == null) return;
+        full += c.value * L.qty; boxes += L.qty;
+        if (c.estimate) { est++; estValue += c.value * L.qty; } else n++;
+        if (allPricedLines.includes(L.line)) lfl += c.value * L.qty;
       });
-      vo.totals = { full, likeForLike: lfl, quoted: n, missing: lines.length - n, boxes };
+      // quoted = prices from the vendor; estimates = your numbers; missing = neither
+      vo.totals = { full, likeForLike: lfl, quoted: n, estimates: est, estimateValue: estValue, inTotal: n + est, missing: lines.length - n - est, boxes };
       vo.freight = QP.freightEstimate(vo, boxes);
+      // Conditional discounts: shown beside the totals, never baked into them (Award decides the split).
+      vo.discounts = ((vo.ex.commercial_terms || {}).discounts || []).filter(d => d && d.percent && d.condition_type === 'annual_order_value_above' && QP.thresholdRupees(d))
+        .map(d => { const threshold = QP.thresholdRupees(d); const met = full > threshold; return { percent: d.percent, threshold, text: d.text, met, saving: met ? full * d.percent / 100 : 0 }; });
       vo.openRed = vo.flags.filter(f => f.open && f.sev === 'red').length;
       vo.openYellow = vo.flags.filter(f => f.open && f.sev === 'yellow').length;
     });
@@ -268,7 +309,7 @@ window.QP = window.QP || {};
     out.cheapest = {};
     lines.forEach(L => {
       let best = null;
-      ids.forEach(id => { const v = out.vendors[id].cells[L.line].value; if (v != null && (best == null || v < best.v)) best = { id, v }; });
+      ids.forEach(id => { const c = out.vendors[id].cells[L.line], v = c.value; if (v != null && !c.estimate && (best == null || v < best.v)) best = { id, v }; });
       out.cheapest[L.line] = best;
     });
     return out;
@@ -304,6 +345,40 @@ window.QP = window.QP || {};
     else if (v < 100000 && /lakh|lac/.test(words)) v *= 1e5;
     const fx = d.threshold_currency && d.threshold_currency !== 'INR' ? (QP.state.rfx.fxRates[d.threshold_currency] || 1) : 1;
     return v * fx;
+  };
+
+  // Plain-English labels for questionnaire answers (the AI's internal codes never reach the screen).
+  // Returns { cls: 'green' | 'amber' | 'red' | 'grey', text }
+  QP.NOT_MENTIONED = 'Not mentioned in the reply';
+  QP.qLabel = function (key, o, ex) {
+    o = o || {};
+    const a = o.answer;
+    const atts = (ex && ex.attachments) || [];
+    if (key === 'iso_9001') {
+      const doc = atts.find(x => x.type === 'iso_certificate');
+      if (a === 'yes') return doc ? { cls: 'green', text: '✓ Yes, certificate attached' } : { cls: 'red', text: 'Claimed, no certificate attached' };
+      if (a === 'in_process') return { cls: 'amber', text: 'Applied, not yet certified' };
+      if (a === 'no') return { cls: 'red', text: 'No' };
+      return doc ? { cls: 'amber', text: 'Certificate attached, not stated in reply' } : { cls: 'red', text: QP.NOT_MENTIONED };
+    }
+    if (key === 'monthly_capacity') return o.boxes_per_month ? { cls: 'green', text: fmt(o.boxes_per_month, 0) + ' boxes / month' } : { cls: 'red', text: QP.NOT_MENTIONED };
+    if (key === 'test_report') {
+      const doc = atts.find(x => x.type === 'test_report');
+      if (doc || a === 'attached') return { cls: 'green', text: '✓ Report attached' };
+      if (a === 'claimed_not_attached') return { cls: 'red', text: 'Mentioned, no report attached' };
+      return { cls: 'red', text: QP.NOT_MENTIONED };
+    }
+    if (key === 'food_safe_inks') {
+      if (a === 'yes') return { cls: 'green', text: '✓ Yes' };
+      if (a === 'no') return { cls: 'red', text: 'No' };
+      return { cls: 'amber', text: QP.NOT_MENTIONED };
+    }
+    if (key === 'box_weight_confirmation') {
+      if (a === 'confirmed') return { cls: 'green', text: '✓ Confirmed as per spec' };
+      if (a === 'deviations_stated') return { cls: 'amber', text: 'Some weights differ from spec' };
+      return { cls: 'grey', text: QP.NOT_MENTIONED };
+    }
+    return { cls: 'grey', text: a ? String(a).replace(/_/g, ' ') : QP.NOT_MENTIONED };
   };
 
   QP.namesMatch = function (a, b) {

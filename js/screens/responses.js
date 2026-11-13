@@ -12,6 +12,26 @@ QP.busy = QP.busy || {};
     stale: ['amber', 'New files — not read yet']
   };
 
+  // "48 s" / "1 min 52 s"
+  QP.fmtDur = ms => { const t = Math.round(ms / 1000); return t < 60 ? `${t} s` : `${Math.floor(t / 60)} min ${t % 60} s`; };
+  QP.timingText = function (tm) {
+    if (!tm || !QP.SHOW_TIMING) return '';
+    const retries = (tm.attempts || 1) - 1;
+    return `Read in ${QP.fmtDur(tm.totalMs)}` + (retries ? ` · ${retries} ${retries === 1 ? 'retry' : 'retries'} (AI busy, ${QP.fmtDur(tm.waitedMs)} waiting)` : '');
+  };
+  // live "23 s" counter while a vendor is being read
+  setInterval(() => {
+    if (!QP.SHOW_TIMING) return;
+    Object.entries(QP.busy || {}).forEach(([id, b]) => { if (!b) return; const el = document.getElementById('el-' + id); if (el) el.textContent = QP.fmtDur(Date.now() - b.start); });
+  }, 1000);
+
+  // Short notes shown inside a vendor's row (instead of a pop-up at the bottom of the page)
+  QP.rowNote = QP.rowNote || {};
+  function noteRow(vendorId, text, kind = 'info') {
+    QP.rowNote[vendorId] = { text, kind };
+    setTimeout(() => { if (QP.rowNote[vendorId] && QP.rowNote[vendorId].text === text) { delete QP.rowNote[vendorId]; QP.render(); } }, 8000);
+  }
+
   async function addBlob(vendorId, blob, name, mime) {
     const vs = QP.vendorState(vendorId);
     const id = `${vendorId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -50,32 +70,34 @@ QP.busy = QP.busy || {};
       if (vs.files.length) continue;
       for (const name of V.samples) {
         const r = await fetch(`samples/${V.id}/${encodeURIComponent(name)}`);
-        if (!r.ok) { QP.toast(`Could not load sample ${name}`); continue; }
+        if (!r.ok) { noteRow(V.id, `Could not load sample file ${name}.`, 'err'); continue; }
         const blob = await r.blob();
         await addBlob(V.id, blob, name, blob.type);
       }
       n++;
       QP.enqueue(V.id);
     }
-    QP.toast(n ? `${n} vendor replies arrived. The AI will read them one by one.` : 'Sample replies are already loaded.');
     QP.render();
+    QP.say(document.querySelector('.main .head'), n ? `${n} vendor replies arrived. The AI will read them one by one.` : 'Sample replies are already loaded.', 'info', 6000);
   };
 
   QP.processVendor = async function (vendorId) {
     const vs = QP.vendorState(vendorId);
     const ctrl = new AbortController();
-    QP.busy[vendorId] = { ctrl, status: 'AI reading…' }; vs.error = null; QP.render();
+    const start = Date.now();
+    QP.busy[vendorId] = { ctrl, status: 'AI reading…', start }; vs.error = null; QP.render();
     const onStatus = txt => {
       if (QP.busy[vendorId]) QP.busy[vendorId].status = txt;
       const el = document.getElementById('st-' + vendorId); if (el) el.textContent = txt;
     };
     try {
-      const { data, model } = await QP.extractVendor(vendorId, { signal: ctrl.signal, onStatus });
+      const { data, model, timing } = await QP.extractVendor(vendorId, { signal: ctrl.signal, onStatus });
       vs.extraction = data; vs.model = model; vs.processedAt = new Date().toISOString(); vs.status = 'processed';
+      vs.timing = Object.assign({ totalMs: Date.now() - start }, timing || {});
       // decisions about this vendor's old flags no longer apply to the new reading
       Object.keys(QP.state.decisions).forEach(k => { if (k.startsWith(vendorId + ':')) delete QP.state.decisions[k]; });
     } catch (e) {
-      if (e.cancelled) QP.toast(`Stopped reading ${QP.VENDORS.find(v => v.id === vendorId).name}.${vs.extraction ? ' Previous results kept.' : ''}`);
+      if (e.cancelled) noteRow(vendorId, `Stopped reading.${vs.extraction ? ' Previous results kept.' : ''}`);
       else vs.error = e.message;
     }
     QP.busy[vendorId] = null; QP.save(); QP.render();
@@ -106,12 +128,12 @@ QP.busy = QP.busy || {};
     for (const f of vs.files) { await QP.files.del(f.id); QP.forgetPrepared(f.id); }
     QP.state.vendors[vendorId] = { status: 'not_responded', files: [], pastedText: '', sent: vs.sent || [] };
     Object.keys(QP.state.decisions).forEach(k => { if (k.startsWith(vendorId + ':')) delete QP.state.decisions[k]; });
-    QP.save(); QP.toast(`${V.name}'s reply removed.`); QP.go('responses');
+    QP.save(); noteRow(vendorId, 'Reply removed. You can add the correct reply now.', 'ok'); QP.go('responses');
   };
 
   QP.processAll = async function () {
     const ids = QP.VENDORS.map(v => v.id).filter(id => { const vs = QP.state.vendors[id]; return vs && vs.files.length && (vs.status === 'responded' || vs.status === 'stale' || vs.error); });
-    if (!ids.length) { QP.toast('Nothing waiting to be read.'); return; }
+    if (!ids.length) return;
     ids.forEach(id => QP.enqueue(id));
   };
 
@@ -122,13 +144,16 @@ QP.busy = QP.busy || {};
       <textarea class="paste" id="pasteTxt" placeholder="From: …&#10;Subject: …&#10;&#10;Message…"></textarea>
       <div class="row" style="margin-top:10px">
         ${V.pasteSample ? '<button class="btn sm" id="fillSample">Fill with demo email</button>' : ''}
-        <span class="grow"></span><button class="btn primary" id="pasteSave">Save reply</button>
+        <span class="grow"></span><button class="btn primary" id="pasteSave" disabled>Save reply</button>
       </div>`, { width: 760 });
     const fill = body.querySelector('#fillSample');
-    if (fill) fill.onclick = async () => { const r = await fetch(`samples/${vendorId}/${V.pasteSample}`); body.querySelector('#pasteTxt').value = await r.text(); };
-    body.querySelector('#pasteSave').onclick = async () => {
-      const txt = body.querySelector('#pasteTxt').value.trim();
-      if (!txt) { QP.toast('Paste the email text first.'); return; }
+    const ta = body.querySelector('#pasteTxt'), save = body.querySelector('#pasteSave');
+    const sync = () => { save.disabled = !ta.value.trim(); };
+    ta.oninput = sync;
+    if (fill) fill.onclick = async () => { const r = await fetch(`samples/${vendorId}/${V.pasteSample}`); ta.value = await r.text(); sync(); };
+    save.onclick = async () => {
+      const txt = ta.value.trim();
+      if (!txt) return;
       await addBlob(vendorId, new Blob([txt], { type: 'text/plain' }), 'Pasted email.txt', 'text/plain');
       QP.closeModal(); QP.enqueue(vendorId);
     };
@@ -165,15 +190,17 @@ QP.busy = QP.busy || {};
     const lines = QP.state.rfx.lines.map(L => {
       const c = vo.cells[L.line]; const e = c.raw;
       const raw = e && e.price_value != null ? `${e.currency || ''} ${e.price_value} ${e.price_basis_text ? '(' + esc(e.price_basis_text) + ')' : esc(e.price_basis || '')}` : (e && e.reference_text ? `“${esc(e.reference_text)}”` : '');
-      const st = { priced: '', not_quoted: '<span class="pill red">not quoted</span>', unreadable: '<span class="pill red">unreadable</span>', reference: '<span class="pill red">vague reference</span>', unit_problem: '<span class="pill red">unit unclear</span>' }[c.status] || '';
+      // Always the AI's own reading; your decisions are shown underneath, never in place of it.
+      const st = { priced: '', not_quoted: `<span class="pill red">${c.declined ? 'cannot supply' : 'not quoted'}</span>`, unreadable: '<span class="pill red">unreadable</span>', reference: '<span class="pill red">vague reference</span>', unit_problem: '<span class="pill red">unit unclear</span>' }[c.vendorStatus || c.status] || '';
+      const mine = c.estimate ? `<div class="small" style="color:var(--violet)">Your estimate: ${QP.fmtRs(c.value, 2)} / pc</div>` : c.badges.includes('corrected') ? `<div class="small" style="color:var(--violet)">Corrected by you: ${QP.fmtRs(c.value, 2)} / pc</div>` : c.badges.includes('assumed_last_year') ? `<div class="small" style="color:var(--violet)">Last year's ${QP.fmtRs(c.value, 2)} used, vendor to confirm</div>` : '';
       return `<tr><td>${L.line}</td><td>${esc(L.desc)}<div class="small muted">${esc(L.plant)}</div></td><td>${esc(e ? e.vendor_item_text : '')}${e && e.match_confidence !== 'high' ? `<div class="small" style="color:var(--amber)">match ${esc(e.match_confidence)}: ${esc(e.match_basis)}</div>` : ''}</td>
-        <td>${raw} ${st}${c.reason ? `<div class="small muted">${esc(c.reason)}</div>` : ''}</td>
+        <td>${raw} ${st}${c.reason ? `<div class="small muted">${esc(c.reason)}</div>` : ''}${mine}</td>
         <td>${e ? `<span class="pill ${e.clarity === 'clear' ? 'green' : e.clarity === 'unclear' ? 'amber' : 'red'}">${esc(e.clarity)}</span>` : ''}${e && e.clarity_note ? `<div class="small muted">${esc(e.clarity_note)}</div>` : ''}</td>
         <td class="num">${c.aiValue != null ? QP.fmtRs(c.aiValue, 3) : '—'}</td><td>${srcBtn(c.source)}</td></tr>`;
     }).join('');
     const t = ex.commercial_terms || {}, q = ex.questionnaire || {};
-    const term = (k, o) => o ? `<div class="k">${k}</div><div>${esc(o.text || (o.days != null ? o.days + ' days' : '') || o.basis || (o.stated === false ? 'Not stated' : ''))} ${srcBtn(o.source)}</div>` : '';
-    const qa = (k, o) => o ? `<div class="k">${k}</div><div><span class="pill ${/yes|attached|stated|confirmed/.test(o.answer) ? 'green' : 'red'}">${esc(o.answer)}</span> ${esc(o.claim_text || o.text || (o.boxes_per_month ? QP.fmt(o.boxes_per_month, 0) + ' boxes/month' : '') || o.evidence_file || '')} ${srcBtn(o.source)}</div>` : '';
+    const term = (k, o) => o ? `<div class="k">${k}</div><div>${esc(o.text || (o.days != null ? o.days + ' days' : '') || o.basis || (o.stated === false ? QP.NOT_MENTIONED : ''))} ${srcBtn(o.source)}</div>` : '';
+    const qa = (k, key) => { const o = q[key] || {}; const lb = QP.qLabel(key, o, ex); return `<div class="k">${k}</div><div><span class="pill ${lb.cls}">${esc(lb.text)}</span> ${esc(key === 'monthly_capacity' ? (o.text || '') : (o.claim_text || o.text || o.evidence_file || ''))} ${srcBtn(o.source)}</div>`; };
     const files = vs.files || [];
     const docRows = files.map(f => {
       const a = (ex.attachments || []).find(x => QP.esc(x.file).toLowerCase() === QP.esc(f.name).toLowerCase() || f.name.toLowerCase().includes(String(x.file || '').toLowerCase().replace(/\.[a-z]+$/, '')));
@@ -181,7 +208,7 @@ QP.busy = QP.busy || {};
       return `<div style="margin-bottom:8px"><button class="icon-btn" title="Open file" data-file="${esc(f.id)}">📄</button> <a href="#" data-file="${esc(f.id)}"><b>${esc(f.name)}</b></a><div class="small muted" style="margin-left:26px">${info || 'Quotation / reply'}</div></div>`;
     }).join('');
     const body = QP.modal(`Extracted quote — ${esc(V.name)}`, `
-      <div class="row small muted" style="margin-bottom:10px">Quote ${esc(ex.quote_reference || '—')} · dated ${esc(ex.quote_date || '—')} <span class="grow"></span><span title="Read by ${esc(vs.model || 'AI')} on ${new Date(vs.processedAt).toLocaleString('en-IN')}. Raw values as read; ₹/pc computed by plain code." style="cursor:help">ⓘ</span></div>
+      <div class="row small muted" style="margin-bottom:10px">Quote ${esc(ex.quote_reference || '—')} · dated ${esc(ex.quote_date || '—')}${vs.timing && QP.SHOW_TIMING ? ` · ⏱ ${esc(QP.timingText(vs.timing))}` : ''} <span class="grow"></span><span title="Read by ${esc(vs.model || 'AI')} on ${new Date(vs.processedAt).toLocaleString('en-IN')}. Raw values as read; ₹/pc computed by plain code." style="cursor:help">ⓘ</span></div>
       <div style="overflow:auto;max-height:46vh" class="card"><table class="t"><thead><tr><th>RFx</th><th>Our item</th><th>Vendor's item &amp; match</th><th>Raw value read</th><th>Clarity</th><th class="num">₹/pc</th><th></th></tr></thead><tbody>${lines}</tbody></table></div>
       <div class="row" style="align-items:flex-start;margin-top:14px;gap:14px">
         <div class="card grow"><div class="ch"><h3>Commercial terms</h3></div><div class="cb kv">
@@ -190,7 +217,7 @@ QP.busy = QP.busy || {};
           ${(t.other_conditions || []).map(d => `<div class="k">Condition</div><div>${esc(d.text)} ${srcBtn(d.source)}</div>`).join('')}
         </div></div>
         <div class="card grow"><div class="ch"><h3>Questionnaire</h3></div><div class="cb kv">
-          ${qa('ISO 9001', q.iso_9001)}${qa('Monthly capacity', q.monthly_capacity)}${qa('Test report', q.test_report)}${qa('Food-safe inks', q.food_safe_inks)}${qa('Box weights', q.box_weight_confirmation)}
+          ${qa('ISO 9001', 'iso_9001')}${qa('Monthly capacity', 'monthly_capacity')}${qa('Test report', 'test_report')}${qa('Food-safe inks', 'food_safe_inks')}${qa('Box weights', 'box_weight_confirmation')}
         </div></div>
       </div>
       <div class="card" style="margin-top:14px"><div class="ch"><h3>Documents sent by the vendor</h3></div><div class="cb">
@@ -248,7 +275,7 @@ QP.busy = QP.busy || {};
         const [cls, label] = STATUS[vs.status] || STATUS.not_responded;
         const vo = QP.model && QP.model.vendors[V.id];
         let status;
-        if (busy) status = `<span class="pill blue"><span class="spinner"></span> AI reading…</span><div class="status-line" id="st-${V.id}">${esc(busy.status === 'AI reading…' ? '' : busy.status)}</div><a href="#" class="stoplink" data-stop="${V.id}">Stop reading</a>`;
+        if (busy) status = `<span class="pill blue"><span class="spinner"></span> AI reading…${QP.SHOW_TIMING ? ` <span id="el-${V.id}">${QP.fmtDur(Date.now() - busy.start)}</span>` : ''}</span><div class="status-line" id="st-${V.id}">${esc(busy.status === 'AI reading…' ? '' : busy.status)}</div><a href="#" class="stoplink" data-stop="${V.id}">Stop reading</a>`;
         else if (queued) status = '<span class="pill grey">⏳ Waiting to be read</span>';
         else {
           status = `<span class="pill ${cls}">${label}</span>`;
@@ -256,9 +283,11 @@ QP.busy = QP.busy || {};
             const next = vo.openRed ? `<a href="#" class="small" style="color:var(--red)" data-goissues="${V.id}">${vo.openRed} ${vo.openRed === 1 ? 'issue needs' : 'issues need'} your decision →</a>`
               : vo.openYellow ? `<a href="#" class="small" style="color:var(--amber)" data-goissues="${V.id}">${vo.openYellow} ${vo.openYellow === 1 ? 'point' : 'points'} worth a look →</a>`
               : '<span class="small tile-ok">✓ Nothing to review</span>';
-            status += `<div style="margin-top:4px">${next}</div>${vo.totals.missing ? `<div class="small muted">Quoted ${vo.totals.quoted} of ${QP.state.rfx.lines.length} lines</div>` : ''}`;
+            status += `<div style="margin-top:4px">${next}</div>${vo.totals.quoted < QP.state.rfx.lines.length ? `<div class="small muted">Quoted ${vo.totals.quoted} of ${QP.state.rfx.lines.length} lines</div>` : ''}`;
+            if (vs.timing && QP.SHOW_TIMING) status += `<div class="small muted timing">⏱ ${esc(QP.timingText(vs.timing))}</div>`;
           }
         }
+        if (QP.rowNote[V.id]) status += `<div class="say ${QP.rowNote[V.id].kind}">${esc(QP.rowNote[V.id].text)}</div>`;
         if ((vs.sent || []).length) status += `<div class="small" style="margin-top:2px"><a href="#" data-sentv="${V.id}">✉ ${vs.sent.length} message${vs.sent.length > 1 ? 's' : ''} sent</a></div>`;
         let main = '';
         if (busy || queued) main = '';

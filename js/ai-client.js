@@ -44,21 +44,26 @@ window.QP = window.QP || {};
   }
 
   // onStatus(text) is called with progress messages like "AI is busy, retrying in 20 s (attempt 2 of 4)"
+  // Also returns timing: attempts (1 = first try worked) and waitedMs (time spent waiting between retries).
   QP.callAI = async function ({ system, parts, json = true, maxTokens, signal, onStatus }) {
+    let waitedMs = 0;
     for (let attempt = 0; ; attempt++) {
       try {
         const data = await once({ system, parts, json, maxTokens, signal });
-        if (!json) return { text: data.text, model: data.model };
+        const timing = { attempts: attempt + 1, waitedMs, modelsTried: data.tried || [] };
+        if (!json) return { text: data.text, model: data.model, timing };
         const parsed = QP.parseJSONLoose(data.text);
         if (!parsed) { const err = new Error('The AI answer could not be read.'); err.busy = true; throw err; }
-        return { data: parsed, model: data.model };
+        return { data: parsed, model: data.model, timing };
       } catch (e) {
         if (e.cancelled || (signal && signal.aborted)) throw new Cancelled();
         if (!e.busy || attempt >= RETRY_WAITS.length) {
           throw new Error(e.busy ? 'The AI is busy right now. Please try again in a few minutes.' : e.message);
         }
+        const w0 = Date.now();
         await wait(RETRY_WAITS[attempt], signal, left =>
           onStatus && onStatus(`AI is busy, retrying in ${left}s (attempt ${attempt + 2} of ${RETRY_WAITS.length + 1})`));
+        waitedMs += Date.now() - w0;
         onStatus && onStatus('AI reading…');
       }
     }

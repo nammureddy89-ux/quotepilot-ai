@@ -98,8 +98,8 @@ Questionnaire asked: ${rfx.questionnaire.map(q => q.text).join(' / ')}`;
       parts.push(...prep.aiParts);
     }
     parts.push({ type: 'text', text: schemaText() });
-    const { data, model } = await QP.callAI({ system: SYSTEM, parts, json: true, signal: opts.signal, onStatus: opts.onStatus });
+    const { data, model, timing } = await QP.callAI({ system: SYSTEM, parts, json: true, signal: opts.signal, onStatus: opts.onStatus });
     if (!data || !Array.isArray(data.lines)) throw new Error('The AI answer was missing the line items. Press Retry.');
-    return { data, model };
+    return { data, model, timing };
   };
 })();

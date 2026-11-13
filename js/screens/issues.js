@@ -22,7 +22,7 @@ QP.screens = QP.screens || {};
     QP.save(); QP.render();
   };
 
-  const ACTION_LABEL = { confirm: 'Accepted', confirm_gap: 'Accepted as not quoted', correct: 'Corrected', assume: 'Your assumption', accept_proposal: "Last year's price used (vendor to confirm)", ask: 'Asked vendor' };
+  const ACTION_LABEL = { confirm: 'Accepted', confirm_gap: 'Accepted as not quoted', correct: 'Corrected', assume: 'Your estimate', accept_proposal: "Last year's price used (vendor to confirm)", ask: 'Asked vendor' };
 
   function flagHtml(f) {
     const V = QP.VENDORS.find(v => v.id === f.vendor);
@@ -34,31 +34,35 @@ QP.screens = QP.screens || {};
     } else {
       const needReason = f.sev === 'red';
       const parts = [];
-      if (d && d.action === 'ask') parts.push(`<span class="pill amber">✉ Waiting for vendor reply · asked ${new Date(d.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span><a href="#" class="small" data-sent="${esc(f.vendor)}">view message</a>`);
+      const fresh = QP.justSent && QP.justSent[f.id] && Date.now() - QP.justSent[f.id] < 6000;
+      if (d && d.action === 'ask') parts.push(`<span class="pill ${fresh ? 'green' : 'amber'}">${fresh ? '✓ Email sent (simulated) · ' : '✉ '}Waiting for vendor reply · asked ${new Date(d.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span><a href="#" class="small" data-sent="${esc(f.vendor)}">view message</a>`);
       (f.actions || []).forEach(a => {
-        if (a === 'confirm') parts.push(`<button class="btn sm" data-a="confirm">${f.sev === 'red' ? 'Accept with reason…' : 'Accept'}</button>`);
+        if (a === 'confirm') parts.push('<button class="btn sm" data-a="confirm">Accept</button>');
         if (a === 'confirm_gap') parts.push('<button class="btn sm" data-a="confirm_gap">Accept as not quoted</button>');
         if (a === 'remove_reply') parts.push('<button class="btn sm danger" data-a="remove_reply">Remove this reply</button>');
         if (a === 'accept_proposal') parts.push(`<button class="btn sm primary" data-a="accept_proposal">Use last year ₹${QP.fmt(f.proposal)} (vendor to confirm)</button>`);
         if (a === 'correct') parts.push('<button class="btn sm" data-a="correct">Enter correct value…</button>');
-        if (a === 'assume') parts.push('<button class="btn sm" data-a="assume">Enter my assumption…</button>');
+        if (a === 'assume') parts.push('<button class="btn sm" data-a="assume">Enter my estimate…</button>');
         if (a === 'ask' && !(d && d.action === 'ask')) parts.push('<button class="btn sm" data-a="ask">Ask vendor</button>');
       });
-      act = `<div class="act">${parts.join('')}</div><div class="act" data-form style="display:none">
-        <input type="number" step="0.001" data-val placeholder="${esc(f.assumeLabel || '₹ per piece, excl. GST')}">
-        <input class="reason" data-reason placeholder="${needReason ? 'Reason (required — saved in the award record)' : 'Reason (optional)'}">
-        <button class="btn sm primary" data-save>Save</button><button class="btn sm" data-cancel>Cancel</button></div>`;
+      act = `<div class="act">${parts.join('')}</div><div class="actform" data-form style="display:none">
+        <label class="small" data-vallabel>${esc(f.assumeLabel || '₹ per piece, excl. GST')}<br><input type="number" step="0.001" min="0" data-val></label>
+        <label class="small" data-reasonlabel><span data-rlabel></span><br><input class="reason" data-reason></label>
+        <div class="row"><button class="btn sm primary" data-save disabled>Save</button><button class="btn sm" data-cancel>Cancel</button></div>
+        <div class="small muted" data-hint></div></div>`;
     }
     const just = QP.justDone[f.id] && d;
     return `<div class="flag ${just ? 'just' : d && d.action !== 'ask' ? 'done' : ''}" data-flag="${esc(f.id)}">
       <div><div class="dot ${f.sev}"></div></div>
-      <div><div class="row"><span class="title">${esc(f.title)}</span><span class="pill grey">${esc(V.name)}</span>${f.line ? `<span class="pill grey">Line ${f.line}</span>` : ''}${src}</div>
+      <div><div class="row"><span class="title">${esc(f.title)}</span><span class="pill grey">${esc(V.name)}</span>${f.line ? `<span class="pill grey">Line ${f.line}</span>` : ''}${f.groupLines ? `<span class="pill grey">${f.groupLines.length} lines</span>` : ''}${src}</div>
       <div style="margin-top:4px">${esc(f.detail)}</div>${act}</div></div>`;
   }
 
   QP.screens.issues = function (main) {
     const filter = QP.issueFilter;
     const m = QP.model;
+    // A filter pointing at a vendor that is no longer read (e.g. being re-read) would silently show nothing.
+    if (filter.vendor !== 'all' && !m.processedIds.includes(filter.vendor)) filter.vendor = 'all';
     if (!m.processedIds.length) {
       main.innerHTML = `<div class="head"><div><h1>Review issues</h1><p>Nothing processed yet.</p></div></div><div class="card empty">Process vendor replies first. <br><br><button class="btn primary" onclick="QP.go('responses')">Go to Vendor responses</button></div>`;
       return;
@@ -84,7 +88,7 @@ QP.screens = QP.screens || {};
         <div class="kpi"><div class="l">Must resolve (all vendors)</div><div class="v">${allRed ? `<span style="color:var(--red)">${allRed}</span>` : '<span class="tile-ok">✓ All resolved</span>'}</div></div>
         ${m.processedIds.map(id => { const vo = m.vendors[id];
           const val = !vo.openRed && !vo.openYellow ? '<span class="tile-ok">✓ All resolved</span>'
-            : [vo.openRed ? `<span style="color:var(--red)">${vo.openRed} 🔴</span>` : '<span class="tile-ok">🔴 ✓</span>', vo.openYellow ? `<span style="color:var(--amber)">${vo.openYellow} 🟡</span>` : '<span class="tile-ok">🟡 ✓</span>'].join(' · ');
+            : [vo.openRed ? `<span style="color:var(--red)">${vo.openRed} 🔴</span>` : '<span class="tile-ok">✓ No must-resolve</span>', vo.openYellow ? `<span style="color:var(--amber)">${vo.openYellow} 🟡</span>` : '<span class="tile-ok">✓ No checks</span>'].join(' · ');
           return `<div class="kpi"><div class="l">${esc(vo.name)}</div><div class="v" style="font-size:16px">${val}</div></div>`; }).join('')}
       </div>
       <div class="tabs" id="sevTabs">
@@ -95,9 +99,11 @@ QP.screens = QP.screens || {};
         <span class="grow"></span>
         <select id="vfilter" class="btn sm"><option value="all">All vendors</option>${m.processedIds.map(id => `<option value="${id}" ${filter.vendor === id ? 'selected' : ''}>${esc(m.vendors[id].name)}</option>`).join('')}</select>
       </div>
-      <div class="card">${flags.map(flagHtml).join('') || '<div class="empty">Nothing here. 🎉</div>'}</div>`;
+      ${filter.vendor !== 'all' || filter.sev !== 'open' ? `<div class="filterchip">Showing: ${filter.vendor !== 'all' ? esc(m.vendors[filter.vendor].name) : 'All vendors'} · ${{ open: 'all open issues', red: '🔴 must resolve', yellow: '🟡 worth a check', done: 'resolved' }[filter.sev]} <a href="#" id="showAll">✕ Show all open issues</a></div>` : ''}
+      <div class="card">${flags.map(flagHtml).join('') || `<div class="empty">${counts.open || counts.done ? 'No issues match this filter.' : 'Nothing to review. 🎉'}</div>`}</div>`;
 
     main.querySelectorAll('#sevTabs [data-s]').forEach(b => b.onclick = () => { filter.sev = b.dataset.s; QP.render(); });
+    const sa = main.querySelector('#showAll'); if (sa) sa.onclick = e => { e.preventDefault(); filter.vendor = 'all'; filter.sev = 'open'; QP.render(); };
     main.querySelector('#vfilter').onchange = e => { filter.vendor = e.target.value; QP.render(); };
     main.querySelectorAll('[data-flag]').forEach(el => {
       const f = m.flags.find(x => x.id === el.dataset.flag);
@@ -117,16 +123,30 @@ QP.screens = QP.screens || {};
         if (a === 'confirm_gap' || a === 'accept_proposal' || (a === 'confirm' && f.sev !== 'red')) { QP.decide(f, a, null, ''); return; }
         pending = a;
         form.style.display = 'flex';
-        form.querySelector('[data-val]').style.display = a === 'confirm' ? 'none' : '';
-        (a === 'confirm' ? form.querySelector('[data-reason]') : form.querySelector('[data-val]')).focus();
+        const needVal = a !== 'confirm', needReason = f.sev === 'red';
+        form.querySelector('[data-vallabel]').style.display = needVal ? '' : 'none';
+        form.querySelector('[data-rlabel]').textContent = a === 'confirm' ? 'Why are you accepting this?' : needReason ? 'Reason' : 'Reason (optional)';
+        form.querySelector('[data-save]').textContent = a === 'confirm' ? 'Accept' : 'Save';
+        form.querySelector('[data-hint]').textContent = needReason ? 'Your reason is saved with the award record.' : '';
+        sync();
+        (needVal ? form.querySelector('[data-val]') : form.querySelector('[data-reason]')).focus();
       });
+      // Save stays greyed out until what is required is filled in, so no error message is needed.
+      function sync() {
+        if (!form) return;
+        const v = form.querySelector('[data-val]').value, r = form.querySelector('[data-reason]').value.trim();
+        const valOk = pending === 'confirm' || (v !== '' && !isNaN(Number(v)) && Number(v) > 0);
+        const reasonOk = f.sev !== 'red' || !!r;
+        form.querySelector('[data-save]').disabled = !(valOk && reasonOk);
+      }
       if (form) {
+        form.querySelector('[data-val]').oninput = sync;
+        form.querySelector('[data-reason]').oninput = sync;
+        form.querySelector('[data-reason]').onkeydown = e => { if (e.key === 'Enter' && !form.querySelector('[data-save]').disabled) form.querySelector('[data-save]').click(); };
         form.querySelector('[data-cancel]').onclick = () => { form.style.display = 'none'; };
         form.querySelector('[data-save]').onclick = () => {
           const val = form.querySelector('[data-val]').value;
           const reason = form.querySelector('[data-reason]').value.trim();
-          if (pending !== 'confirm' && (val === '' || isNaN(Number(val)) || Number(val) <= 0)) { QP.toast('Enter a number greater than zero.'); return; }
-          if (f.sev === 'red' && !reason) { QP.toast('A written reason is required for must-resolve issues.'); return; }
           QP.decide(f, pending, pending === 'confirm' ? null : Number(val), reason);
         };
       }
