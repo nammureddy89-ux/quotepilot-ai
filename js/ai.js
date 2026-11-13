@@ -1,86 +1,33 @@
-// Vercel serverless function: the ONLY job is to keep the Gemini API key secret.
-// The browser sends { system, parts, json } and gets back { text, model }.
-// Set GEMINI_API_KEY (required) and optionally GEMINI_MODEL in Vercel → Settings → Environment Variables.
-//
-// If a model is busy (503), over its free limit (429), missing (404) or has a server error (500),
-// we wait briefly and try the next model. Free-tier limits are per model, so another model often works.
+// The one place that talks to the AI. To switch AI provider, only api/ai.js changes.
+window.QP = window.QP || {};
 
-const FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-const TIME_BUDGET_MS = 50000; // stay under Vercel's 60 s limit
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Use POST' });
-    return;
+QP.callAI = async function ({ system, parts, json = true, maxTokens }) {
+  let r;
+  try {
+    r = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system, parts, json, maxTokens })
+    });
+  } catch (e) {
+    throw new Error('Could not reach the AI service. Check your connection and press Retry.');
   }
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    res.status(500).json({ error: 'Server is missing GEMINI_API_KEY. Add it in Vercel project settings and redeploy.' });
-    return;
-  }
+  if (r.status === 413) throw new Error('Files are too large to send in one go (limit about 4 MB). Try a smaller photo or fewer attachments.');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `AI service error (${r.status}).`);
+  if (data.finishReason === 'MAX_TOKENS') throw new Error('The AI answer was cut off (too long). Press Retry.');
+  if (!json) return { text: data.text, model: data.model };
+  const parsed = QP.parseJSONLoose(data.text);
+  if (!parsed) throw new Error('The AI returned an answer that could not be read as data. Press Retry.');
+  return { data: parsed, model: data.model };
+};
 
-  let body = req.body;
-  if (typeof body === 'string') {
-    try { body = JSON.parse(body); } catch (e) { body = {}; }
-  }
-  const { system, parts, json, maxTokens } = body || {};
-  if (!Array.isArray(parts) || parts.length === 0) {
-    res.status(400).json({ error: 'No content sent to the AI.' });
-    return;
-  }
-
-  const geminiParts = parts.map(p => {
-    if (p.type === 'text') return { text: p.text };
-    if (p.type === 'file') return { inline_data: { mime_type: p.mime, data: p.data } };
-    return { text: String(p.text || '') };
-  });
-
-  const payload = {
-    contents: [{ role: 'user', parts: geminiParts }],
-    generationConfig: { temperature: 0, maxOutputTokens: maxTokens || 32768 }
-  };
-  if (system) payload.systemInstruction = { parts: [{ text: system }] };
-  if (json) payload.generationConfig.responseMimeType = 'application/json';
-
-  const models = process.env.GEMINI_MODEL
-    ? [process.env.GEMINI_MODEL, ...FALLBACK_MODELS.filter(m => m !== process.env.GEMINI_MODEL)]
-    : FALLBACK_MODELS;
-  const started = Date.now();
-  const tried = [];
-  let lastError = 'Unknown error', lastStatus = 500;
-
-  for (const model of models) {
-    if (Date.now() - started > TIME_BUDGET_MS) break;
-    try {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(payload)
-      });
-      const data = await r.json().catch(() => ({}));
-      if (r.ok) {
-        const cand = (data.candidates || [])[0] || {};
-        const text = ((cand.content || {}).parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
-        res.status(200).json({ text, model, finishReason: cand.finishReason || null, tried });
-        return;
-      }
-      lastStatus = r.status;
-      lastError = (data.error && data.error.message) || `HTTP ${r.status}`;
-      tried.push(`${model}: ${r.status}`);
-      const retryable = [404, 429, 500, 503].includes(r.status) || (r.status === 400 && /model/i.test(lastError));
-      if (!retryable) break;            // e.g. bad key or bad request: no point trying other models
-      if (r.status === 503 || r.status === 500) await sleep(1500);
-    } catch (e) {
-      lastError = e.message; tried.push(`${model}: network error`);
-    }
-  }
-
-  const msg = lastStatus === 429
-    ? 'AI free-tier limit reached on all models. Wait a minute and press Retry.'
-    : (lastStatus === 503 || lastStatus === 500)
-      ? 'Google\'s AI models are busy right now. Wait a minute and press Retry.'
-      : lastError;
-  res.status(lastStatus >= 400 ? lastStatus : 500).json({ error: `${msg} (tried: ${tried.join(', ')})` });
+QP.parseJSONLoose = function (text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) {}
+  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (m) { try { return JSON.parse(m[1]); } catch (e) {} }
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e) {} }
+  return null;
 };
