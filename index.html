@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuotePilot AI — Kill the Quote Spreadsheet</title>
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">QuotePilot AI<small>RFx to award, without the spreadsheet</small></div>
+      <div class="proj"><b>Corrugated boxes 2027</b>Sahyadri Foods · Priya Deshmukh<br>30 lines · 5 vendors</div>
+      <nav class="nav" id="nav"></nav>
+      <div class="foot">
+        Demo data is fictional. Email delivery is simulated; AI extraction and analysis are real.
+        <br><button id="resetBtn">Reset demo</button>
+      </div>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+  <div id="modalRoot"></div>
+
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/mammoth.browser.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/files.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/extract.js"></script>
+  <script src="js/normalize.js"></script>
+  <script src="js/source.js"></script>
+  <script src="js/screens/responses.js"></script>
+  <script src="js/screens/issues.js"></script>
+  <script src="js/screens/compare.js"></script>
+  <script src="js/screens/placeholders.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
