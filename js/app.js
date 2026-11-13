@@ -59,7 +59,8 @@ window.QP = window.QP || {};
   };
 
   document.getElementById('resetBtn').addEventListener('click', async () => {
-    if (!confirm('Clear all vendor replies, AI results and your decisions in this browser?')) return; // #1 pending approval
+    if (!await QP.confirmBox('Reset demo?', 'This clears all vendor replies, AI results, sent messages and your decisions in this browser.', 'Reset', true)) return;
+    Object.values(QP.busy || {}).forEach(b => b && b.ctrl && b.ctrl.abort()); QP.queue = [];
     await QP.resetAll(); QP.toast('Demo reset.'); QP.go('responses');
   });
 

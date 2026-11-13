@@ -484,15 +484,15 @@ QP.RFX_SEED = {
 };
 
 QP.VENDORS = [
-  { id: 'A', name: 'Shree Ganesh Packaging', contact: 'Rakesh Kulkarni', status2026: 'Incumbent',
+  { id: 'A', email: 'rakesh@shreeganeshpack.example', name: 'Shree Ganesh Packaging', contact: 'Rakesh Kulkarni', status2026: 'Incumbent',
     samples: ['Quotation SGP-Q-311.xlsx', 'ISO 9001 Certificate.pdf', 'Test Report BCT.pdf'] },
-  { id: 'B', name: 'Deccan Corrugators', contact: 'Anand Joshi', status2026: 'Incumbent',
+  { id: 'B', email: 'anand.joshi@deccancorrugators.example', name: 'Deccan Corrugators', contact: 'Anand Joshi', status2026: 'Incumbent',
     samples: ['DC-SF-1142 Quotation.pdf', 'ISO 9001-2015 Certificate.pdf', 'Test Report.pdf'] },
-  { id: 'C', name: 'PackRite Asia', contact: 'Vikram Shah', status2026: 'New',
+  { id: 'C', email: 'vikram.shah@packriteasia.example', name: 'PackRite Asia', contact: 'Vikram Shah', status2026: 'New',
     samples: ['PRA-IN-2026-0457 Sahyadri Proposal.docx', 'ISO Certificate Sanand Works.pdf', 'Lab Test Report.pdf'] },
-  { id: 'D', name: 'Om Sai Box Works', contact: 'Sandeep More', status2026: 'New',
+  { id: 'D', email: 'sandeep@omsaiboxworks.example', name: 'Om Sai Box Works', contact: 'Sandeep More', status2026: 'New',
     samples: ['IMG_20261121_104512.jpg'] },
-  { id: 'E', name: 'Maharashtra Kraft Pack', contact: 'Mahesh Patil', status2026: 'Incumbent',
+  { id: 'E', email: 'mahesh@mkraftpack.example', name: 'Maharashtra Kraft Pack', contact: 'Mahesh Patil', status2026: 'Incumbent',
     samples: [] , pasteSample: 'email.txt' }
 ];
 

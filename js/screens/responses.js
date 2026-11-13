@@ -7,9 +7,9 @@ QP.busy = QP.busy || {};
   const esc = s => QP.esc(s);
   const STATUS = {
     not_responded: ['grey', 'Not responded'],
-    responded: ['blue', 'Responded — not processed'],
-    processed: ['green', 'Processed by AI'],
-    stale: ['amber', 'New files — process again']
+    responded: ['blue', 'Received — not read yet'],
+    processed: ['green', 'Read by AI'],
+    stale: ['amber', 'New files — not read yet']
   };
 
   async function addBlob(vendorId, blob, name, mime) {
@@ -20,6 +20,25 @@ QP.busy = QP.busy || {};
     vs.status = vs.extraction ? 'stale' : 'responded';
     vs.error = null;
     QP.save();
+  }
+
+  // ---------- automatic processing queue: one vendor at a time ----------
+  QP.queue = QP.queue || [];
+  let running = false;
+  QP.enqueue = function (vendorId) {
+    if (!QP.queue.includes(vendorId) && !QP.busy[vendorId]) QP.queue.push(vendorId);
+    QP.render();
+    runQueue();
+  };
+  async function runQueue() {
+    if (running) return;
+    running = true;
+    while (QP.queue.length) {
+      const id = QP.queue.shift();
+      const vs = QP.state.vendors[id];
+      if (vs && vs.files.length) await QP.processVendor(id);
+    }
+    running = false;
   }
 
   QP.simulateReplies = async function () {
@@ -36,8 +55,9 @@ QP.busy = QP.busy || {};
         await addBlob(V.id, blob, name, blob.type);
       }
       n++;
+      QP.enqueue(V.id);
     }
-    QP.toast(n ? `${n} vendor replies arrived. Maharashtra Kraft Pack has not replied yet.` : 'Sample replies are already loaded.');
+    QP.toast(n ? `${n} vendor replies arrived. The AI will read them one by one.` : 'Sample replies are already loaded.');
     QP.render();
   };
 
@@ -62,6 +82,7 @@ QP.busy = QP.busy || {};
   };
 
   QP.cancelProcessing = function (vendorId) {
+    if (QP.queue.includes(vendorId)) { QP.queue = QP.queue.filter(x => x !== vendorId); QP.render(); return; }
     const b = QP.busy[vendorId]; if (b && b.ctrl) b.ctrl.abort();
   };
 
@@ -72,7 +93,7 @@ QP.busy = QP.busy || {};
       const ok = await QP.confirmBox('Read this reply again?', `This replaces the current results for <b>${esc(V.name)}</b> and clears your review decisions for this vendor.`, 'Read again');
       if (!ok) return;
     }
-    QP.processVendor(vendorId);
+    QP.enqueue(vendorId);
   };
 
   // Used by the "wrong vendor" issue: removes every file of this vendor's reply.
@@ -89,8 +110,8 @@ QP.busy = QP.busy || {};
 
   QP.processAll = async function () {
     const ids = QP.VENDORS.map(v => v.id).filter(id => { const vs = QP.state.vendors[id]; return vs && vs.files.length && (vs.status === 'responded' || vs.status === 'stale' || vs.error); });
-    if (!ids.length) { QP.toast('Nothing new to process.'); return; }
-    for (const id of ids) { if (!QP.busy[id]) await QP.processVendor(id); }   // one at a time: stays inside free-tier limits
+    if (!ids.length) { QP.toast('Nothing waiting to be read.'); return; }
+    ids.forEach(id => QP.enqueue(id));
   };
 
   function pasteDialog(vendorId) {
@@ -108,7 +129,7 @@ QP.busy = QP.busy || {};
       const txt = body.querySelector('#pasteTxt').value.trim();
       if (!txt) { QP.toast('Paste the email text first.'); return; }
       await addBlob(vendorId, new Blob([txt], { type: 'text/plain' }), 'Pasted email.txt', 'text/plain');
-      QP.closeModal(); QP.render();
+      QP.closeModal(); QP.enqueue(vendorId);
     };
   }
 
@@ -117,8 +138,9 @@ QP.busy = QP.busy || {};
     inp.type = 'file'; inp.multiple = true;
     inp.accept = '.pdf,.xlsx,.xls,.csv,.docx,.txt,.eml,image/*';
     inp.onchange = async () => {
+      if (!inp.files.length) return;
       for (const f of inp.files) await addBlob(vendorId, f, f.name, f.type);
-      QP.render();
+      QP.enqueue(vendorId);
     };
     inp.click();
   }
@@ -182,11 +204,11 @@ QP.busy = QP.busy || {};
     const received = vids.filter(id => QP.state.vendors[id] && QP.state.vendors[id].files.length).length;
     const processed = vids.filter(id => QP.state.vendors[id] && QP.state.vendors[id].extraction).length;
     main.innerHTML = `
-      <div class="head"><div><h1>Vendor responses</h1><p>RFx ${esc(QP.state.rfx.id)} was sent to 5 vendors (email simulated). Replies arrive in any format — Excel, PDF, Word, a phone photo or a plain email. Click <b>Process with AI</b> to read a reply; nothing is extracted until you do.</p></div>
-        <div class="actions"><button class="btn" id="simBtn">Simulate replies arriving</button><button class="btn primary" id="procAll">Process all received</button></div></div>
+      <div class="head"><div><h1>Vendor responses</h1><p>RFx ${esc(QP.state.rfx.id)} was sent to 5 vendors (email simulated). Replies arrive in any format — Excel, PDF, Word, a phone photo or a plain email — and the AI reads each one as it arrives, one at a time.</p></div>
+        <div class="actions"><button class="btn primary" id="simBtn">Simulate replies arriving</button>${QP.VENDORS.some(V => { const v = QP.state.vendors[V.id]; return v && v.files.length && (v.status !== 'processed' || v.error) && !QP.busy[V.id] && !QP.queue.includes(V.id); }) ? '<button class="btn" id="procAll">Read all waiting replies</button>' : ''}</div></div>
       <div class="kpis">
         <div class="kpi"><div class="l">Replies received</div><div class="v">${received} / 5</div></div>
-        <div class="kpi"><div class="l">Processed by AI</div><div class="v">${processed} / 5</div></div>
+        <div class="kpi"><div class="l">Read by AI</div><div class="v">${processed} / 5</div></div>
         <div class="kpi"><div class="l">Quotes due</div><div class="v">23 Nov 2026</div></div>
         <div class="kpi"><div class="l">RFx lines</div><div class="v">${QP.state.rfx.lines.length}</div></div>
       </div>
@@ -199,24 +221,25 @@ QP.busy = QP.busy || {};
         return `<div class="vrow">
           <div class="avatar">${V.id}</div>
           <div><b>${esc(V.name)}</b><div class="small muted">${esc(V.contact)} · ${V.status2026 === 'Incumbent' ? 'Current supplier' : 'New vendor'}</div></div>
-          <div>${busy ? `<span class="pill blue"><span class="spinner"></span> Processing</span><div class="status-line" id="st-${V.id}">${esc(busy.status)}</div>` : `<span class="pill ${cls}">${label}</span>`}${sum}</div>
+          <div>${QP.queue.includes(V.id) ? `<span class="pill grey">⏳ Queued — #${QP.queue.indexOf(V.id) + 1}</span>` : ''}${busy ? `<span class="pill blue"><span class="spinner"></span> AI reading</span><div class="status-line" id="st-${V.id}">${esc(busy.status)}</div>` : QP.queue.includes(V.id) ? '' : `<span class="pill ${cls}">${label}</span>`}${sum}${(vs.sent || []).length ? `<div class="small" style="margin-top:4px"><a href="#" data-sentv="${V.id}">✉ ${vs.sent.length} message${vs.sent.length > 1 ? 's' : ''} sent</a></div>` : ''}</div>
           <div><div class="files">${vs.files.map(f => `<span class="file" data-view="${V.id}|${f.id}">📄 ${esc(f.name)} <span data-del="${V.id}|${f.id}" title="Remove" style="margin-left:4px;color:#98a2b3">✕</span></span>`).join('') || '<span class="muted small">No reply yet</span>'}</div>
             ${vs.error ? `<div class="err">⚠ ${esc(vs.error)}</div>` : ''}</div>
           <div class="row" style="justify-content:flex-end">
             <button class="btn sm" data-up="${V.id}">Upload</button><button class="btn sm" data-paste="${V.id}">Paste email</button>
-            ${busy ? `<button class="btn sm danger" data-cancel="${V.id}">Cancel</button>` : vs.files.length ? `<button class="btn sm ${vs.extraction && vs.status === 'processed' ? '' : 'primary'}" data-proc="${V.id}">${vs.error ? 'Retry' : vs.extraction ? 'Re-process' : 'Process with AI'}</button>` : ''}
+            ${busy || QP.queue.includes(V.id) ? `<button class="btn sm danger" data-cancel="${V.id}">Cancel</button>` : vs.files.length ? `<button class="btn sm ${vs.extraction && vs.status === 'processed' ? '' : 'primary'}" data-proc="${V.id}">${vs.error ? 'Retry' : vs.extraction && vs.status === 'processed' ? 'Re-process' : 'Read with AI'}</button>` : ''}
             ${vs.extraction ? `<button class="btn sm" data-ex="${V.id}">View extracted quote</button>` : ''}
           </div></div>`;
       }).join('')}</div>`;
 
     main.querySelector('#simBtn').onclick = QP.simulateReplies;
-    main.querySelector('#procAll').onclick = QP.processAll;
+    const pa = main.querySelector('#procAll'); if (pa) pa.onclick = QP.processAll;
+    main.querySelectorAll('[data-sentv]').forEach(a => a.onclick = e => { e.preventDefault(); QP.showSent(a.dataset.sentv); });
     main.querySelectorAll('[data-up]').forEach(b => b.onclick = () => uploadDialog(b.dataset.up));
     main.querySelectorAll('[data-paste]').forEach(b => b.onclick = () => pasteDialog(b.dataset.paste));
     main.querySelectorAll('[data-proc]').forEach(b => b.onclick = () => QP.reprocess(b.dataset.proc));
     main.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => QP.cancelProcessing(b.dataset.cancel));
     main.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => QP.showExtraction(b.dataset.ex));
-    main.querySelectorAll('[data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); const [v, f] = b.dataset.del.split('|'); if (confirm('Remove this file?')) removeFile(v, f); });
+    main.querySelectorAll('[data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); const [v, f] = b.dataset.del.split('|'); const fr = (QP.state.vendors[v].files || []).find(x => x.id === f); QP.confirmBox('Remove file?', `Remove <b>${esc(fr ? fr.name : 'this file')}</b> from this vendor's reply?`, 'Remove', true).then(ok => { if (ok) removeFile(v, f); }); });
     main.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const [v, f] = b.dataset.view.split('|'); QP.showFile(v, QP.state.vendors[v].files.find(x => x.id === f)); });
   };
 })();

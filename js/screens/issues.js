@@ -34,7 +34,7 @@ QP.screens = QP.screens || {};
     } else {
       const needReason = f.sev === 'red';
       const parts = [];
-      if (d && d.action === 'ask') parts.push('<span class="pill amber">Asked vendor — waiting</span>');
+      if (d && d.action === 'ask') parts.push(`<span class="pill amber">✉ Waiting for vendor reply · asked ${new Date(d.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span><a href="#" class="small" data-sent="${esc(f.vendor)}">view message</a>`);
       (f.actions || []).forEach(a => {
         if (a === 'confirm') parts.push(`<button class="btn sm" data-a="confirm">${f.sev === 'red' ? 'Accept with reason…' : 'Accept'}</button>`);
         if (a === 'confirm_gap') parts.push('<button class="btn sm" data-a="confirm_gap">Accept as not quoted</button>');
@@ -106,12 +106,14 @@ QP.screens = QP.screens || {};
         QP.showSource(f.vendor, f.source, { title: f.title, steps: c && c.steps, note: f.detail });
       };
       const undo = el.querySelector('[data-undo]'); if (undo) undo.onclick = () => QP.undoDecision(f);
+      const sentL = el.querySelector('[data-sent]'); if (sentL) sentL.onclick = e => { e.preventDefault(); QP.showSent(f.vendor); };
       const form = el.querySelector('[data-form]');
       let pending = null;
       el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
         const a = b.dataset.a;
         if (a === 'remove_reply') { QP.removeVendorReply(f.vendor); return; }
-        if (a === 'confirm_gap' || a === 'accept_proposal' || a === 'ask' || (a === 'confirm' && f.sev !== 'red')) { QP.decide(f, a, null, ''); return; }
+        if (a === 'ask') { QP.askVendor(f); return; }
+        if (a === 'confirm_gap' || a === 'accept_proposal' || (a === 'confirm' && f.sev !== 'red')) { QP.decide(f, a, null, ''); return; }
         pending = a;
         form.style.display = 'flex';
         form.querySelector('[data-val]').style.display = a === 'confirm' ? 'none' : '';
