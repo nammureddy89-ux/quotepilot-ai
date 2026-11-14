@@ -269,7 +269,7 @@ window.QP = window.QP || {};
         if (Object.keys(RFX_DIFF).some(k => covered[k] && RFX_DIFF[k].test(d)) && !/\d[\d,.]*\s*(vs|versus|but|while)/i.test(d)) return;
         const line = cf.rfx_line || null;
         // "Enter correct value" only makes sense when the conflict is about one item's price
-        addFlag(vo, { type: 'conflict' + i, line, sev: 'red', title: 'Conflicting information', detail: d, source: (cf.sources || [])[0] || null, actions: line ? ['confirm', 'correct', 'ask'] : ['confirm', 'ask'] });
+        addFlag(vo, { type: 'conflict' + i, line, sev: 'red', title: 'Conflicting information', detail: d, source: (cf.sources || [])[0] || null, actions: ['confirm', 'ask'] });
       });
     });
 
