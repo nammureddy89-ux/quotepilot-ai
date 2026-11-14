@@ -26,11 +26,11 @@ QP.screens = QP.screens || {};
   }
 
   function optionCard(o, m) {
-    const e = o.ev, on = picked === o.key;
+    const e = o.ev, on = picked === o.key, A0 = QP.state.award, won = A0 && A0.key === o.key;
     const per = Object.values(e.per).sort((a, b) => b.goods - a.goods);
     const risks = e.risks.slice().sort((a, b) => ({ red: 0, yellow: 1, info: 2 }[a.sev] - { red: 0, yellow: 1, info: 2 }[b.sev]));
     const ly = e.vsLastYear;
-    return `<div class="opt ${on ? 'on' : ''} ${o.lowest ? 'low' : ''}">
+    return `<div class="opt ${on ? 'on' : ''} ${o.lowest ? 'low' : ''} ${won ? 'won' : A0 ? 'dimmed' : ''}">
       <div class="row" style="gap:6px">${o.lowest ? '<span class="pill green">Lowest true cost</span>' : ''}${e.incomplete ? '<span class="pill red">Total incomplete</span>' : ''}${e.uncovered.length ? `<span class="pill red">${e.covered}/${QP.state.rfx.lines.length} items</span>` : `<span class="pill grey">${QP.state.rfx.lines.length}/${QP.state.rfx.lines.length} items</span>`}</div>
       <h4>${esc(o.title)}</h4>
       <div class="ot">${QP.fmtCr(e.total)}${e.incomplete ? '<span class="small" style="color:var(--red)"> + unknown freight</span>' : ''}</div>
@@ -48,7 +48,8 @@ QP.screens = QP.screens || {};
         ${e.assumptions.length ? `<div>${dot('yellow')}${e.assumptions.length} value${e.assumptions.length > 1 ? 's' : ''} not straight from a quote (corrected / last year's price / your freight estimate)</div>` : ''}</div>
       ${o.others && o.others.length ? `<div class="small muted" style="margin-top:6px">Other single vendors: ${o.others.map(s => `${esc(s.per[s.vendorsUsed[0]] ? s.per[s.vendorsUsed[0]].name : '')} ${s.incomplete ? 'incomplete' : QP.fmtCr(s.total)}${s.uncovered.length ? ` (${s.covered}/${QP.state.rfx.lines.length} items)` : ''}`).join(' · ')}</div>` : ''}
       <details class="small muted" style="margin-top:6px"><summary style="cursor:pointer">How this is worked out</summary>${esc(o.how)} Freight is recalculated for the boxes each vendor gets; a discount counts only if this option meets its condition. Payment terms impact = cost of paying earlier (or later) than our ${QP.state.rfx.paymentDaysStandard}-day standard at ${QP.fmt(e.payRate * 100, 0)}% a year — shown separately, not in the total.</details>
-      <button class="btn ${on ? 'primary' : ''}" data-pick="${o.key}" style="margin-top:10px;width:100%">${on ? '✓ Selected' : 'Choose this option'}</button>
+      ${A0 ? (won ? '<div class="awarded-tag">✓ Awarded</div>' : '<div class="small muted" style="margin-top:10px;text-align:center">Award recorded — use “Change decision” at the top to choose again.</div>')
+        : `<button class="btn ${on ? 'primary' : ''}" data-pick="${o.key}" style="margin-top:10px;width:100%">${on ? '✓ Selected' : 'Choose this option'}</button>`}
     </div>`;
   }
 
@@ -61,16 +62,22 @@ QP.screens = QP.screens || {};
         <textarea id="ovr" class="reasonbox" placeholder="Why are you awarding with these issues open?"></textarea></div>` : ''}
       ${e.incomplete ? `<div class="say err" style="margin:0 0 10px">The total is incomplete (freight amount unknown). Enter a freight estimate in Review Issues first.</div>` : ''}
       ${e.uncovered.length ? `<div class="say err" style="margin:0 0 10px">${e.uncovered.length} item(s) are not covered by this option (line ${e.uncovered.join(', ')}).</div>` : ''}
-      <label class="small" style="color:#344054">Reason for this decision <span class="muted">(saved in the award record)</span></label>
-      <textarea id="why" class="reasonbox" placeholder="e.g. Lowest true cost; keeps Deccan's 3% discount; two suppliers reduce supply risk."></textarea>
+      <label class="small" style="color:#344054">Why this option? <span class="muted">(pick one or more, and/or write your own — saved in the award record and used in the note for your VP)</span></label>
+      <div class="row" style="gap:6px;margin:6px 0">${REASONS.map(r => `<button type="button" class="chip" data-reason="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+      <textarea id="why" class="reasonbox" placeholder="In your own words (optional if you picked a reason above), e.g. Deccan has delivered on time for three years; keeping Shree Ganesh as a second supplier for the Sinnar plant."></textarea>
+      <div id="whyHint" class="small" style="color:var(--amber);min-height:16px"></div>
+      <label class="small" style="color:#344054;margin-top:6px;display:block">How will you manage the risks? <span class="muted">(optional — the note only mentions what you write here, the AI never invents it)</span></label>
+      <textarea id="riskPlan" class="reasonbox" style="min-height:44px" placeholder="e.g. Quarterly price review with Deccan; Shree Ganesh as backup if Deccan is late."></textarea>
       <div class="row" style="margin-top:10px"><button class="btn primary" id="confirmAward" disabled>Confirm award</button><span class="small muted">Your decision and these numbers will be saved as a record. Later changes won’t alter it.</span></div>
     </div></div>`;
   }
 
+  const REASONS = ['Lowest total cost', 'Keeps the volume discount', 'Two suppliers reduce supply risk', 'Better payment terms', 'Proven delivery record with us', 'Fewer open issues'];
+  const TRIVIAL = /^(ok|okay|confirm(ed)?|yes|done|fine|approved?|go|good|na|n\/a|-|\.)\.?$/i;
   function snapshot(o, m, q, why, ovr) {
     const e = o.ev;
     return {
-      at: new Date().toISOString(), key: o.key, title: o.title, reason: why, overrideReason: ovr || null,
+      at: new Date().toISOString(), key: o.key, title: o.title, reason: why.text, reasonChips: why.chips, reasonText: why.own, riskPlan: why.riskPlan, overrideReason: ovr || null,
       total: e.total, goods: e.goods, freight: e.freight, discount: e.discount, gst: e.gst, payImpact: e.payImpact, payRate: e.payRate, covered: e.covered, uncovered: e.uncovered,
       vsLastYear: e.vsLastYear, risks: e.risks, assumptions: e.assumptions,
       per: Object.values(e.per).map(p => ({ id: p.id, name: p.name, lines: p.lines, goods: p.goods, freight: p.freight.amount, freightText: p.freight.text, discount: p.discount, total: p.total, paymentDays: p.paymentDays })),
@@ -78,16 +85,16 @@ QP.screens = QP.screens || {};
       openRed: e.openRed.map(f => ({ vendor: QP.VENDORS.find(v => v.id === f.vendor).name, title: f.title, line: f.line })),
       qualification: QP.VENDORS.map(V => ({ name: V.name, pass: q[V.id].pass, processed: q[V.id].processed, why: q[V.id].why })),
       mustPass: QP.award.mustPassList().map(r => ({ label: r.label, on: r.on })),
-      otherOptions: (QP._awardOptions || []).filter(x => x.key !== o.key).map(x => ({ title: x.title, total: x.ev.total, incomplete: x.ev.incomplete })),
+      otherOptions: (QP._awardOptions || []).filter(x => x.key !== o.key).map(x => ({ key: x.key, title: x.title, total: x.ev.total, incomplete: x.ev.incomplete, covered: x.ev.covered, vendors: x.ev.vendorsUsed.map(id => x.ev.per[id].name) })),
       issueDecisions: m.flags.filter(f => f.decision && (o.ev.per[f.vendor])).map(f => ({ vendor: QP.VENDORS.find(v => v.id === f.vendor).name, title: f.title, line: f.line, action: ACTION_LABEL[f.decision.action] || f.decision.action, value: f.decision.value, reason: f.decision.reason || '' }))
     };
   }
 
   function recordCard(a) {
     const when = new Date(a.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-    return `<div class="card"><div class="ch"><h3>✓ Awarded: ${esc(a.title)}</h3><span class="grow"></span>
+    return `<div class="card award-done"><div class="ch"><div><h3>✓ Awarded: ${esc(a.title)} · ${QP.fmtCr(a.total)}</h3><div class="small muted">Decided ${when} by Priya Deshmukh. The options below are shown for reference only.</div></div><span class="grow"></span>
         <button class="btn sm" id="xlsAward">Download award record (Excel)</button><button class="btn sm" id="changeAward">Change decision</button></div>
-      <div class="cb">
+      <details class="cb" ${recordOpen ? 'open' : ''} id="recDetails"><summary class="small" style="cursor:pointer;color:var(--brand);margin-bottom:8px">View the full record and the note for your VP</summary>
         <div class="kpis"><div class="kpi"><div class="l">Landed total, before GST</div><div class="v">${QP.fmtCr(a.total)}</div></div>
           <div class="kpi"><div class="l">vs last year's prices (${a.vsLastYear ? a.vsLastYear.lines : 0} continuing items)</div><div class="v" style="color:${a.vsLastYear && a.vsLastYear.pct <= 0 ? 'var(--green)' : 'var(--red)'}">${a.vsLastYear ? (a.vsLastYear.pct > 0 ? '+' : '') + QP.fmt(a.vsLastYear.pct * 100, 1) + '%' : '—'}</div></div>
           <div class="kpi"><div class="l">Items covered</div><div class="v">${a.covered}/${QP.state.rfx.lines.length}</div></div>
@@ -97,6 +104,7 @@ QP.screens = QP.screens || {};
         </tbody></table>
         <div class="kv" style="margin-top:14px">
           <div class="k">Reason</div><div>${esc(a.reason)}</div>
+          ${a.riskPlan ? `<div class="k">How risks are managed</div><div>${esc(a.riskPlan)}</div>` : ''}
           ${a.overrideReason ? `<div class="k">Open issues accepted</div><div>${a.openRed.map(f => esc(f.vendor + ' — ' + f.title)).join('; ')}<br><i>${esc(a.overrideReason)}</i></div>` : ''}
           <div class="k">Other options</div><div>${a.otherOptions.map(x => `${esc(x.title)}: ${x.incomplete ? 'incomplete' : QP.fmtCr(x.total)}`).join(' · ') || '—'}</div>
           <div class="k">Qualification</div><div>${a.qualification.filter(x => x.processed).map(x => `${esc(x.name)}: ${x.pass ? '✓ qualifies' : '✗ ' + esc(x.why)}`).join('<br>')}</div>
@@ -105,7 +113,7 @@ QP.screens = QP.screens || {};
           <div class="k">Decided</div><div>${when} · Priya Deshmukh · numbers saved as they were at this moment</div>
         </div>
         <div id="memoSlot"></div>
-      </div></div>`;
+      </details></div>`;
   }
 
   function downloadRecord(a) {
@@ -119,6 +127,7 @@ QP.screens = QP.screens || {};
     XLSX.writeFile(wb, 'award-record.xlsx');
   }
 
+  let recordOpen = false;   // the full record is folded away, except right after the award is recorded
   QP.screens.award = function (main) {
     const m = QP.model;
     if (!m.processedIds.length) {
@@ -139,7 +148,8 @@ QP.screens = QP.screens || {};
       ${qualifyCard(m, q)}
       <div class="card"><div class="ch"><h3>2 · Award options</h3><span class="muted small">Only vendors that qualify · before GST · items only the vendor priced (your estimates are never awarded)</span><span class="grow"></span>
         <label class="small muted">Payment terms impact at <input id="payRate" type="number" min="0" max="30" step="0.5" value="${QP.fmt(prefs().payRate * 100, 1).replace(/\.0$/, '')}" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:3px 6px"> % a year</label></div>
-        <div class="cb">${opts.length ? `<div class="opts">${opts.map(o => optionCard(o, m)).join('')}</div>` : '<div class="empty">No vendor qualifies, so there is nothing to award. The table above shows which rule each vendor failed.</div>'}</div></div>
+        <div class="cb">${opts.length ? `<div class="opts">${opts.filter(o => !o.alt).map(o => optionCard(o, m)).join('')}</div>
+          ${opts.some(o => o.alt) ? `<div class="small muted" style="margin:16px 0 8px"><b style="color:#344054">Award everything to a different vendor</b> — every other vendor that qualifies, on the same true-cost basis:</div><div class="opts">${opts.filter(o => o.alt).map(o => optionCard(o, m)).join('')}</div>` : ''}` : '<div class="empty">No vendor qualifies, so there is nothing to award. The table above shows which rule each vendor failed.</div>'}</div></div>
       ${!a && picked ? decideCard(opts.find(o => o.key === picked)) : ''}`;
 
     main.querySelectorAll('[data-must]').forEach(cb => cb.onchange = () => {
@@ -155,18 +165,28 @@ QP.screens = QP.screens || {};
     const btn = main.querySelector('#confirmAward');
     if (btn) {
       const o = opts.find(x => x.key === picked);
-      const why = main.querySelector('#why'), ovr = main.querySelector('#ovr');
-      const ok = () => { btn.disabled = !(why.value.trim().length > 2 && (!ovr || ovr.value.trim().length > 2) && !o.ev.incomplete && !o.ev.uncovered.length); };
+      const why = main.querySelector('#why'), ovr = main.querySelector('#ovr'), hint = main.querySelector('#whyHint'), rp = main.querySelector('#riskPlan');
+      const chips = new Set();
+      const ownOk = () => { const t = why.value.trim(); return t.length >= 15 && !TRIVIAL.test(t); };
+      const ok = () => {
+        const t = why.value.trim();
+        const reasonOk = chips.size > 0 ? (!t || !TRIVIAL.test(t)) : ownOk();
+        hint.textContent = t && (TRIVIAL.test(t) || (!chips.size && t.length < 15)) ? 'Please give a real reason your VP can rely on (pick one above, or write at least a short sentence).' : '';
+        btn.disabled = !(reasonOk && (!ovr || ovr.value.trim().length > 2) && !o.ev.incomplete && !o.ev.uncovered.length); };
+      main.querySelectorAll('[data-reason]').forEach(c => c.onclick = () => { const r = c.dataset.reason; if (chips.has(r)) chips.delete(r); else chips.add(r); c.classList.toggle('on', chips.has(r)); ok(); });
       why.oninput = ok; if (ovr) ovr.oninput = ok;
-      btn.onclick = () => { QP.state.award = snapshot(o, m, q, why.value.trim(), ovr ? ovr.value.trim() : null); QP.save(); picked = null; QP.flash = { text: 'Award recorded.', kind: 'ok' }; QP.render(); window.scrollTo(0, 0); };
+      btn.onclick = () => { const own = why.value.trim(), list = [...chips];
+        const W = { chips: list, own, riskPlan: rp.value.trim(), text: [list.join('; '), own].filter(Boolean).join('. ') };
+        QP.state.award = snapshot(o, m, q, W, ovr ? ovr.value.trim() : null); QP.save(); picked = null; recordOpen = true; QP.flash = { text: 'Award recorded.', kind: 'ok' }; QP.render(); window.scrollTo(0, 0); };
     }
     if (a) {
       main.querySelector('#xlsAward').onclick = () => downloadRecord(a);
       main.querySelector('#changeAward').onclick = async () => {
         if (!await QP.confirmBox('Change the decision?', 'The current award record will be removed so you can choose again. The options below are recalculated from the latest data.', 'Change decision')) return;
-        QP.state.award = null; QP.save(); QP.render();
+        QP.state.award = null; recordOpen = false; QP.save(); QP.render();
       };
       if (QP.awardMemo) QP.awardMemo(main.querySelector('#memoSlot'), a);
+      const rd = main.querySelector('#recDetails'); if (rd) rd.ontoggle = () => { recordOpen = rd.open; };
     }
   };
 })();

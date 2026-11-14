@@ -208,6 +208,9 @@ window.QP = window.QP || {};
       pairs(ids).forEach(p => { const ev = A.bestFor(m, p); if (ev.vendorsUsed.length === 2 && better(ev, best)) best = ev; });
       if (best) options.push({ key: 'split2', title: `Best split: ${best.vendorsUsed.map(id => best.per[id].name).join(' + ')}`, how: 'Every pair of vendors tried. Each item goes where it is cheapest after freight per box and any discount the pair can reach.', ev: best });
     }
+    // Every other qualified vendor alone too, so the buyer can award to any of them (Ask AI only uses the three main options).
+    singles.filter(s => s !== singleBest).forEach(ev => { const id = ev.vendorsUsed[0]; if (!id) return;
+      options.push({ key: 'single_' + id, alt: true, title: `One vendor: ${ev.per[id].name}`, how: 'Every item this vendor priced goes to it.', ev }); });
     // lowest true cost (only among complete, full-coverage options)
     const ranked = options.filter(o => !o.ev.incomplete).sort((a, b) => b.ev.covered - a.ev.covered || a.ev.total - b.ev.total);
     if (ranked[0]) ranked[0].lowest = true;

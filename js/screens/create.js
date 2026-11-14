@@ -137,7 +137,7 @@ QP.screens = QP.screens || {};
       </div></div>
 
       <div class="card" data-focus="lines"><div class="ch"><h3>Line items <span class="muted" style="font-weight:400">(${D.lines.length})</span></h3></div>
-        <div style="overflow:auto;max-height:62vh"><table class="t edit"><thead><tr><th>#</th><th>Description</th><th>Product use</th><th>Ply</th><th>Board</th><th>Size L×W×H mm</th><th>Weight g</th><th>Printing</th><th>Plant</th><th class="num">Annual qty</th><th>Source</th><th></th></tr></thead><tbody>
+        <div data-keepscroll style="overflow:auto;max-height:62vh"><table class="t edit"><thead><tr><th>#</th><th>Description</th><th>Product use</th><th>Ply</th><th>Board</th><th>Size L×W×H mm</th><th>Weight g</th><th>Printing</th><th>Plant</th><th class="num">Annual qty</th><th>Source</th><th></th></tr></thead><tbody>
         ${D.lines.map(L => {
           const inp = (k, w, type = 'text') => `<input ${dis} data-l="${L.key}" data-k="${k}" data-focus="line-${L.key}-${k}" type="${type}" style="width:${w}px" value="${esc(L[k])}" class="${mark('line-' + L.key + '-' + k)}">`;
           const dup = checks.find(c => c.id === 'dup-' + L.key && !D.ignored[c.id]);
@@ -315,6 +315,7 @@ QP.screens = QP.screens || {};
     history.replaceState(null, '', '#create');
     const el = main.querySelector(`[data-focus="${CSS.escape(f)}"]`);
     if (!el) return;
+    QP._scrollTo = f;   // tells the app not to restore the old scroll position after this re-draw
     el.scrollIntoView({ block: 'center' });
     if (el.focus && /INPUT|SELECT|TEXTAREA|BUTTON/.test(el.tagName)) el.focus();
     el.classList.add('flashfocus'); setTimeout(() => el.classList.remove('flashfocus'), 2200);

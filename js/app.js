@@ -38,6 +38,7 @@ window.QP = window.QP || {};
     document.getElementById('nav').innerHTML = QP.STAGES.map(s =>
       `<a href="#${s.id}" class="${s.id === cur ? 'on' : ''} ${!sent && !s.pre ? 'dim' : ''}"><span class="num">${sent && s.pre ? '✓' : s.n}</span>${s.label}` +
       (s.id === 'issues' && issuesOpen ? `<span class="later" style="color:#fda29b">${issuesOpen} 🔴</span>` : '') +
+      (s.id === 'award' && QP.state.award ? '<span class="later" style="color:#75e0a7">✓ awarded</span>' : '') +
       (s.later ? '<span class="later">next build</span>' : '') + '</a>'
     ).join('');
     const R = QP.state.rfx, D = QP.state.draft;
@@ -47,9 +48,24 @@ window.QP = window.QP || {};
     const stage = QP.STAGES.find(s => s.id === cur) || QP.STAGES[0];
     const screen = QP.screens[cur] || QP.screens.create;
     const main = document.getElementById('main');
+    // Same screen re-drawing itself (e.g. after editing a field): keep the page and inner tables where they were,
+    // and put the cursor back in the field the person had just clicked.
+    const same = QP._drawn === cur; QP._drawn = cur;
+    const keep = same ? { y: window.scrollY, boxes: [...main.querySelectorAll('[data-keepscroll], .gridwrap')].map(el => [el.scrollTop, el.scrollLeft]) } : null;
     try { if (!sent && !stage.pre) gate(main, stage); else screen(main); } catch (e) { console.error(e); main.innerHTML = `<div class="card"><div class="cb err">Something went wrong drawing this screen: ${QP.esc(e.message)}</div></div>`; }
+    if (keep && !QP._scrollTo) {
+      window.scrollTo(0, keep.y);
+      main.querySelectorAll('[data-keepscroll], .gridwrap').forEach((el, i) => { if (keep.boxes[i]) { el.scrollTop = keep.boxes[i][0]; el.scrollLeft = keep.boxes[i][1]; } });
+      if (QP._pendingFocus) { const el = main.querySelector(`[data-focus="${CSS.escape(QP._pendingFocus)}"]`); if (el && el !== document.activeElement && !el.disabled) el.focus({ preventScroll: true }); }
+    }
+    QP._pendingFocus = null; QP._scrollTo = null;
     if (QP.flash) { const h = main.querySelector('.head'); if (h) QP.say(h, QP.flash.text, QP.flash.kind, 6000); QP.flash = null; }
   };
+  // Remember which field was clicked: the click blurs the previous field, which re-draws the screen before the new field gets focus.
+  document.addEventListener('mousedown', e => {
+    const t = e.target && e.target.closest ? e.target.closest('#main [data-focus]') : null;
+    QP._pendingFocus = t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) ? t.dataset.focus : null;
+  }, true);
 
   QP.go = id => { if (location.hash === '#' + id) QP.render(); else location.hash = id; };
   window.addEventListener('hashchange', QP.render);

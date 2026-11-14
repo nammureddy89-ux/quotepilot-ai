@@ -33,3 +33,15 @@ table.atab td, table.atab th { font-size: 12.5px; padding: 6px 8px; }
 
 /* v6.1 — legend swatch for "cheapest on the line" (was a sample number) */
 .lg-swatch { display: inline-block; width: 18px; height: 12px; padding: 0; margin-right: 5px; vertical-align: -1px; border: 1px solid #abefc6; }
+
+/* v6.2 — Award decided state */
+.award-done { border-color: #abefc6; box-shadow: 0 0 0 1px #abefc6; }
+.award-done > .ch { background: var(--green-soft); }
+.opt.dimmed { opacity: .55; }
+.opt.won { border-color: var(--green); box-shadow: 0 0 0 2px #abefc6; }
+.awarded-tag { margin-top: 10px; text-align: center; font-weight: 650; color: var(--green); background: var(--green-soft); border-radius: 6px; padding: 7px; }
+
+/* v6.3 — reason chips */
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; color: #344054; }
+.chip:hover { border-color: var(--brand); }
+.chip.on { background: #eef2ff; border-color: var(--brand); color: var(--brand); font-weight: 600; }

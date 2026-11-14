@@ -76,10 +76,10 @@ QP.screens = QP.screens || {};
   function turnHtml(t, ti) {
     const when = new Date(t.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     if (t.clarify) return `<div class="turn"><div class="qb">${esc(t.q)}</div><div class="ab">
-      <div><b>Quick check before I compute:</b> ${esc(t.clarify.question)}</div>
-      <div class="row" style="margin-top:8px">${(t.clarify.options || []).map(o => `<button class="btn sm" data-clar="${ti}" data-opt="${esc(o)}">${esc(o)}</button>`).join('')}</div>
+      <div><b>${t.cannot ? 'I can’t answer that from the quotes.' : 'Quick check before I compute:'}</b> ${esc(t.clarify.question)}</div>
+      <div class="row" style="margin-top:8px">${(t.clarify.options || []).map(o => `<button class="btn sm" data-clar="${ti}" data-cannot="${t.cannot ? 1 : ''}" data-opt="${esc(o)}">${esc(o)}</button>`).join('')}</div>
       <div class="small muted" style="margin-top:6px">Or type your own answer below.</div></div></div>`;
-    const notes = [...new Set((t.results || []).flatMap(r => r.notes || []))];
+    const notes = [...new Set((t.results || []).flatMap(r => r.notes || []))];  // de-duplicated
     // Caveats come from code only. The AI's own caveats only re-word these notes, so showing both listed everything twice.
     const caveats = notes;
     const checkLine = t.check === 'ok' ? '<span class="tile-ok">✓ Every number in this answer was checked against the computed results</span>'
@@ -141,7 +141,7 @@ QP.screens = QP.screens || {};
     box.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!btn.disabled) send(box.value, main); } };
     btn.onclick = () => send(box.value, main);
     main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => send(b.dataset.s, main));
-    main.querySelectorAll('[data-clar]').forEach(b => b.onclick = () => { const t = T[Number(b.dataset.clar)]; send(`${t.q} — ${b.dataset.opt}`, main); });
+    main.querySelectorAll('[data-clar]').forEach(b => b.onclick = () => { const t = T[Number(b.dataset.clar)]; send(b.dataset.cannot ? b.dataset.opt : `${t.q} — ${b.dataset.opt}`, main); });
     const stop = main.querySelector('#stopAsk'); if (stop) stop.onclick = () => busy && busy.ctrl.abort();
     const clr = main.querySelector('#clearAsk'); if (clr) clr.onclick = async () => { if (await QP.confirmBox('Clear the conversation?', 'This removes the questions and answers on this screen. Quotes, decisions and the award are not affected.', 'Clear')) { QP.state.askTurns = []; QP.save(); QP.render(); } };
     main.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => {

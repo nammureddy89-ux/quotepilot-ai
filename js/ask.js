@@ -23,7 +23,13 @@ Rules:
 - Questions about prices, costs or a chart of prices → line_prices or vendor_totals, never vendor_facts (vendor_facts is for terms, questionnaire answers, certificates and history only).
 - "Last year", "2026", "current contract", "this year vs last year", "2026 vs 2027" → our 2026 contract price per item (one price per item, not each vendor's own 2026 price). Per vendor overall → vendor_totals measure "vs_last_year_pct"; per item → line_prices compare_to "last_year".
 - Certificates, ISO, expiry, validity of documents → vendor_facts with "iso_9001" (and "test_report" if asked); add an issues step with severity "all" when the buyer asks about warnings or problems.
-- If the question is genuinely ambiguous in a way that changes the result (e.g. which vendors, which items, which measure), set "clarify" with one short question and 2–4 short options, and give no steps. Do not ask back when a sensible default exists.
+- ASK BACK (set "clarify" with one short question and 2–4 short options, no steps) when:
+  (a) the question is ambiguous in a way that changes the result (which vendors, which items, which measure), or
+  (b) the question assumes data that is NOT in "DATA AVAILABLE" (e.g. each vendor's own 2026 price, a ply / plant / item not in the RFx, a vendor whose reply is not read yet) — say in the question what we do have, and offer the closest answers we can give as options.
+  Do not ask back when a sensible default exists.
+- If the question cannot be answered from the quotes at all (e.g. a vendor's financial health, market news), set "cannot" with a one-sentence reason and 2–3 questions we CAN answer as options, and give no steps.
+- Vendor conditions in the question are vendor filters (VF), not line filters: "vendors who quoted all items" → quoted_all_items = true (LF.quoted_by_all is different: it keeps only items every vendor quoted); "passed the must-have checks" → qualified_only = true; "ISO / certificates valid for the whole contract / not expiring during the contract" → iso_valid_through_contract = true.
+- "Total price", "final price", "overall cost" of a vendor → vendor_totals with measure "landed_total" and LF {} (all items). "Which vendor should get the order / potential award" → also add award_options with methods ["single"] using the same VF.
 - If earlier turns are given, the new question may refer to them ("now only 5-ply", "same but exclude Deccan").
 - Output JSON only.
 
@@ -35,14 +41,16 @@ Operations:
 5. issues { vendors: VF, severity: "red"|"yellow"|"all", status: "open"|"all" } — review issues found in the quotes.
 6. what_if { changes: [ {type:"price_change_pct", vendor, lines: LF, pct} | {type:"fx_rate", currency:"USD", rate} | {type:"freight_per_box", vendor, rupees} | {type:"treat_as_qualified", vendor} | {type:"exclude_vendor", vendor} ], methods: ["single"|"cheapest"|"split2"] } — re-runs award_options with the changes.
 
-VF (vendor filter): { ids: [ids]|null, qualified_only: boolean, exclude: [ids]|null, min_on_time_pct: number|null, max_rejection_pct: number|null }
+VF (vendor filter): { ids: [ids]|null, qualified_only: boolean, quoted_all_items: boolean, iso_valid_through_contract: boolean, exclude: [ids]|null, min_on_time_pct: number|null, max_rejection_pct: number|null }
 LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranjangaon"|"Jejuri"|"Sinnar"]|null, text: string|null, new_items_only: boolean, quoted_by_all: boolean }  — use {} for all items.`;
 
-  K.PLAN_SCHEMA = `Return JSON: { "understood": string (one plain sentence restating the question), "clarify": null | { "question": string, "options": [string] }, "steps": [ { "op": string, ...params } ] }`;
+  K.PLAN_SCHEMA = `Return JSON: { "understood": string (one plain sentence restating the question, without the word "award" unless the buyer used it), "clarify": null | { "question": string, "options": [string] }, "cannot": null | { "reason": string, "options": [string] }, "steps": [ { "op": string, ...params } ] }`;
 
   K.WRITE_SYSTEM = `You write the answer to a procurement buyer's question, using ONLY the computed results provided. Rules:
 - 2–4 short sentences, plain Indian business English, lead with the direct answer.
 - Every number you write must be copied exactly as it appears in the results (same rounding and units, e.g. "₹3.73 cr", "₹41.4 L", "27/30" for 27 of 30 items). Do not calculate, round differently or add numbers of your own.
+- For a what-if, lead with which vendors' totals change and by how much, and whether the cheapest vendor changes; mention the ways to place the order only briefly, as secondary.
+- Do not use the word "award" unless the buyer used it.
 - Only if the results are marked SCENARIO, call it a what-if scenario. Otherwise never use the words "scenario" or "what-if".
 - Answer exactly what was asked; if the results show the question assumed something the data does not have, say so plainly in one sentence. Do not recommend beyond what the results show.
 - caveats: up to 3 short points the buyer should know (only from the results' notes). Output JSON only: { "answer": string, "caveats": [string] }`;
@@ -54,7 +62,10 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       return `${V.id} = ${V.name} (${V.status2026 === 'Incumbent' ? 'current supplier' : 'new'}; ${vo.processed ? `reply read, ${vo.totals.quoted}/${QP.state.rfx.lines.length} items quoted, ${q[V.id].pass ? 'qualifies' : 'fails must-pass'}` : 'reply not read yet'}${h ? `; history on-time ${Math.round(h.onTime * 100)}%, rejection ${(h.rejection * 100).toFixed(1)}%` : '; no history'})`; }).join('\n');
     const lines = R.lines.map(L => `${L.line} | ${L.desc} | ${L.ply}-ply | ${L.plant.split(' ')[0]}${L.lastYear ? '' : ' | new item'}`).join('\n');
     const prev = (history || []).slice(-3).map((t, i) => `Earlier question ${i + 1}: ${t.q}\nPlan used: ${JSON.stringify(t.plan && t.plan.steps || [])}`).join('\n');
-    return `VENDORS:\n${vend}\n\nITEMS (line | item | ply | plant):\n${lines}\n\nMust-pass rules: ${QP.award.mustPassList().filter(r => r.on).map(r => r.label).join('; ')}.${prev ? '\n\n' + prev : ''}`;
+    const plies = [...new Set(R.lines.map(L => L.ply))].sort().join(', '), plants = [...new Set(R.lines.map(L => L.plant.split(' ')[0]))].join(', ');
+    const avail = `DATA AVAILABLE: each vendor's quoted 2027 price per item (converted to ₹ per piece); our 2026 contract price per item (ONE price per item, what we paid last year — not each vendor's own 2026 price; new items have none); freight, discounts, payment, validity, lead time, price-variation clause; questionnaire answers (ISO 9001, capacity, test report, food-safe inks); attached certificates with expiry date (only the ISO certificate has an expiry date); review issues; our delivery history for current suppliers only. Contract period: ${R.period || ''}. RFx has ${R.lines.length} items, ply: ${plies}; plants: ${plants}.
+NOT AVAILABLE: vendors' own past prices, vendor financials, market prices, anything outside these quotes.`;
+    return `${avail}\n\nVENDORS:\n${vend}\n\nITEMS (line | item | ply | plant):\n${lines}\n\nMust-pass rules: ${QP.award.mustPassList().filter(r => r.on).map(r => r.label).join('; ')}.${prev ? '\n\n' + prev : ''}`;
   }
 
   // ---------- filters ----------
@@ -70,6 +81,19 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       const out = ids.filter(id => !q[id].pass && !extraQualified.includes(id));
       if (out.length) notes.push(`Left out for failing must-pass rules: ${out.map(id => `${m.vendors[id].name} (${q[id].failed.map(f => f.rule.label).join(', ')})`).join('; ')}.`);
       ids = ids.filter(id => q[id].pass || extraQualified.includes(id));
+    }
+    if (vf.quoted_all_items) {
+      const n = QP.state.rfx.lines.length;
+      const out = ids.filter(id => QP.state.rfx.lines.some(L => !QP.award.eligible(m.vendors[id].cells[L.line])));
+      if (out.length) notes.push(`Left out for not pricing all ${n} items: ${out.map(id => `${m.vendors[id].name} (${m.vendors[id].totals.quoted}/${n})`).join('; ')}.`);
+      ids = ids.filter(id => !out.includes(id));
+    }
+    if (vf.iso_valid_through_contract) {
+      const out = [];
+      ids = ids.filter(id => { const vo = m.vendors[id], r = QP.award.RULES.iso_9001.check(vo.ex || {}, vo, m);
+        const ok = r.pass && !r.note; if (!ok) out.push(`${vo.name} (${r.note || r.text})`); return ok; });
+      if (out.length) notes.push(`Left out because the ISO certificate is missing or not valid for the whole contract: ${out.join('; ')}.`);
+      notes.push('Only the ISO certificate carries an expiry date; test reports have none.');
     }
     if (vf.min_on_time_pct != null || vf.max_rejection_pct != null) {
       const out = [];
@@ -116,15 +140,15 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       return { Line: L.line, Item: L.desc, Plant: L.plant.split(' ')[0], 'Qty/yr': L.qty, Vendor: id ? vname(m, id) : 'not covered', '₹/pc': c ? fmt(c.value) : '—', 'Last year ₹/pc': L.lastYear ? fmt(L.lastYear) : 'new' }; }) }));
     const low = opts.find(o => o.lowest);
     const summary = opts.map(o => `${o.title}: ${QP.fmtCr(o.ev.total)}${o.ev.incomplete ? ' + unknown freight' : ''}${o.ev.freight ? ` (incl. freight ${QP.fmtL(o.ev.freight)})` : ''}`).join('; ') + '.' + (low ? ` Lowest true cost: ${low.title}.` : '');
-    return { title: label || 'Award options on true cost', vendors: ids, rows, facts, notes, summary,
+    return { title: label || 'Ways to place the order — total cost', vendors: ids, rows, facts, notes, summary,
       chart: { label: 'Landed total, ₹ crore (before GST)', bars: opts.filter(o => !o.ev.incomplete).map(o => ({ label: o.title, value: o.ev.total / 1e7, text: QP.fmtCr(o.ev.total), hl: o.lowest })) },
-      extra: detail, method: `Vendors: ${ids.map(id => vname(m, id)).join(', ') || 'none'}. Options: ${opts.map(o => o.title).join(' · ')}. ${opts.map(o => o.how).join(' ')} Freight is recalculated for the boxes each vendor gets; a conditional discount counts only if the option meets it. Your own estimates are never awarded.` };
+      extra: detail, method: `Vendors: ${ids.map(id => vname(m, id)).join(', ') || 'none'}. Options: ${opts.map(o => o.title).join(' · ')}. ${opts.map(o => o.how).join(' ')} Freight is recalculated for the boxes each vendor gets; a conditional discount counts only if the option meets it. Your own estimates are never counted as a vendor price.` };
   }
 
   const OPS = {
     award_options(m, s, q) {
       const { ids, notes } = vendorIds(m, s.vendors, q);
-      if (!(s.vendors && s.vendors.qualified_only) && ids.some(id => !q[id].pass)) notes.push(`Includes vendors that fail must-pass rules (${ids.filter(id => !q[id].pass).map(id => vname(m, id)).join(', ')}) because the question did not limit to qualified vendors. The Award screen never awards them.`);
+      if (!(s.vendors && s.vendors.qualified_only) && ids.some(id => !q[id].pass)) notes.push(`Includes vendors that fail must-pass rules (${ids.filter(id => !q[id].pass).map(id => vname(m, id)).join(', ')}) because the question did not limit to qualified vendors.`);
       return awardResult(m, ids, s.methods, q, notes);
     },
     line_prices(m, s, q) {
@@ -171,7 +195,8 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       if (rows.some(r => r['Items priced'].split('/')[0] !== r['Items priced'].split('/')[1]) && measure !== 'items_quoted') notes.push('Vendors that did not price every item have lower totals partly because items are missing — check “Items priced”.');
       const asc = measure !== 'items_quoted';
       rows.sort((a, b) => a.v == null ? 1 : b.v == null ? -1 : asc ? a.v - b.v : b.v - a.v);
-      const mlabel = { landed_total: 'Landed total', items_value: 'Items value', like_for_like: 'Fair comparison total', vs_last_year_pct: 'Prices vs last year', items_quoted: 'Items quoted' }[measure];
+      const mlabel = landedNote ? 'Items value (no freight / discount)' : { landed_total: 'Landed total', items_value: 'Items value', like_for_like: 'Fair comparison total', vs_last_year_pct: 'Prices vs last year', items_quoted: 'Items quoted' }[measure];
+      if (!ids.length) notes.push('No vendor meets all the conditions in the question.');
       if (measure === 'vs_last_year_pct') {
         // 2027 quote vs the SAME items at what we paid on the 2026 contract. "Last year" is our own contract price per item,
         // not each vendor's own 2026 price (we only have a 2026 price for the items we bought last year).
@@ -257,18 +282,38 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       let r;
       try { QP.state = copy; r = awardResult(m2, ids, s.methods, q, notes, 'Scenario — not real quotes'); } finally { QP.state = real; }
       r.scenario = applied;
-      r.summary = `In this what-if (${applied.join('; ')}): ${r.summary}`;
-      r.facts.unshift(`SCENARIO (what-if, not real quotes): ${applied.join('; ') || 'no change applied'}.`);
-      const base = QP.award.buildOptions(m, vendorIds(m, { qualified_only: true }, q).ids);
-      r.facts.push('For reference, without the changes: ' + base.filter(o => !s.methods || !s.methods.length || s.methods.includes(o.key)).map(o => `${o.title} ${QP.fmtCr(o.ev.total)}`).join('; ') + '.');
-      r.method = `Scenario applied to a copy of the data (${applied.join('; ')}); then the same award calculation. ${r.method}`;
+      // FIRST: what changes for each vendor (every vendor read, each getting every item it priced) — now vs in the what-if.
+      const allIds = QP.VENDORS.map(v => v.id).filter(id => m.vendors[id].processed && !excl.includes(id));
+      const own = (mm, id) => { const a = {}; QP.state.rfx.lines.forEach(L => { if (QP.award.eligible(mm.vendors[id].cells[L.line])) a[L.line] = id; }); return a; };
+      const per = allIds.map(id => { const now = QP.award.evaluate(m, own(m, id)); let then;
+        try { QP.state = copy; then = QP.award.evaluate(m2, own(m2, id)); } finally { QP.state = real; }
+        const ch = now.total && then.total != null ? (then.total - now.total) / now.total : null;
+        return { id, name: vname(m, id), now: now.total, then: then.total, ch, incomplete: now.incomplete || then.incomplete }; });
+      const chTxt = x => x.ch == null ? '—' : Math.abs(x.ch) < 0.0005 ? 'no change' : pct(x.ch);
+      const vrows = per.map(x => ({ Vendor: x.name, Now: QP.fmtCr(x.now) + (x.incomplete ? ' + unknown freight' : ''), 'In this what-if': QP.fmtCr(x.then), Change: chTxt(x), 'Items priced': `${m.vendors[x.id].totals.quoted}/${QP.state.rfx.lines.length}`, 'Rank now': 0, 'Rank in what-if': 0 }));
+      const rank = key => per.map((x, i) => [i, x[key]]).filter(a => a[1] != null).sort((a, b) => a[1] - b[1]).forEach(([i], r) => { vrows[i][key === 'now' ? 'Rank now' : 'Rank in what-if'] = r + 1; });
+      rank('now'); rank('then');
+      const optRows = r.rows, optFacts = r.facts;
+      r.title = 'What-if — total per vendor (each vendor getting every item it priced)';
+      r.rows = vrows;
+      r.extra = [{ title: 'Ways to place the order in this what-if', rows: optRows }].concat(r.extra || []);
+      r.chart = { label: '₹ crore before GST — dark: in this what-if · grey: now', bars: per.filter(x => x.now != null && x.then != null).flatMap(x => [
+        { label: x.name + ' — what-if', value: x.then / 1e7, text: QP.fmtCr(x.then) + ' (' + chTxt(x) + ')' },
+        { label: x.name + ' — now', value: x.now / 1e7, text: QP.fmtCr(x.now), alt: true }]) };
+      const changed = per.filter(x => x.ch != null && Math.abs(x.ch) >= 0.0005);
+      r.facts = [`SCENARIO (what-if, not real quotes): ${applied.join('; ') || 'no change applied'}.`,
+        `Vendors affected: ${changed.length ? changed.map(x => x.name).join(', ') : 'none'}; unchanged: ${per.filter(x => !changed.includes(x)).map(x => x.name).join(', ') || 'none'}.`,
+        ...per.map((x, i) => `${x.name}: now ${QP.fmtCr(x.now)}, in this what-if ${QP.fmtCr(x.then)} (${chTxt(x)}); rank ${vrows[i]['Rank now']} now, ${vrows[i]['Rank in what-if']} in the what-if.`),
+        'Secondary — ways to place the order in this what-if (only vendors that pass the must-pass rules): ' + optFacts.join(' ')];
+      r.summary = `In this what-if (${applied.join('; ')}): ` + per.map(x => `${x.name} ${QP.fmtCr(x.then)} (${chTxt(x)})`).join('; ') + '.';
+      r.method = `Scenario applied to a copy of the data (${applied.join('; ')}); then the same cost calculation as Compare. ${r.method}`;
       return r;
     }
   };
   K.OPS = OPS;
 
   function stepText(s) {
-    const names = { award_options: 'Award options on true cost', line_prices: 'Prices per item', vendor_totals: 'Totals by vendor', vendor_facts: 'Vendor facts', issues: 'Issues', what_if: 'What-if scenario' };
+    const names = { award_options: 'Ways to place the order', line_prices: 'Prices per item', vendor_totals: 'Totals by vendor', vendor_facts: 'Vendor facts', issues: 'Issues', what_if: 'What-if scenario' };
     return names[s.op] || s.op;
   }
 
@@ -297,7 +342,9 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
     const p = await QP.callAI({ system: K.PLAN_SYSTEM, parts: [{ type: 'text', text: planContext(m, history) + `\n\nBUYER'S QUESTION: ${question}\n\n` + K.PLAN_SCHEMA }], json: true, maxTokens: 2048, signal, onStatus });
     const plan = p.data || {};
     const turn = { q: question, plan, at: new Date().toISOString(), models: [p.model], timing: {} };
+    if (plan.cannot && plan.cannot.reason && !(plan.steps || []).length) { turn.clarify = { question: plan.cannot.reason, options: plan.cannot.options || [] }; turn.cannot = true; turn.timing.totalMs = Date.now() - t0; return turn; }
     if (plan.clarify && plan.clarify.question && !(plan.steps || []).length) { turn.clarify = plan.clarify; turn.timing.totalMs = Date.now() - t0; return turn; }
+    if (!(plan.steps || []).length) { turn.clarify = { question: 'I could not turn that into a calculation on the quotes. Could you rephrase it, or pick one of these?', options: ['Total cost by vendor', 'Cheapest vendor per item vs last year', 'Payment terms, capacity and certificates by vendor'] }; turn.cannot = true; turn.timing.totalMs = Date.now() - t0; return turn; }
     onStatus && onStatus('Code is computing on the live data…');
     turn.results = K.run(plan);
     const facts = turn.results.map((r, i) => `RESULT ${i + 1} — ${r.title}\n${r.error ? 'ERROR: ' + r.error : (r.facts || []).join('\n')}${r.notes && r.notes.length ? '\nNotes: ' + r.notes.join(' ') : ''}`).join('\n\n');

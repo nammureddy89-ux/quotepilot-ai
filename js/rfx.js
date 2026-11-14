@@ -384,7 +384,12 @@ ${t.map((x, i) => `${i + 1}. ${x.text}`).join('\n') || '(none)'}`;
       { type: 'text', text: CHECK_SCHEMA }
     ];
     const { data, model, timing } = await QP.callAI({ system: CHECK_SYSTEM, parts, json: true, maxTokens: 4096, signal: opts.signal, onStatus: opts.onStatus });
-    const findings = (data && Array.isArray(data.findings) ? data.findings : []).map((f, i) => {
+    // Dropped items are checked by plain code (by file row), which is reliable. The AI tends to read the brief's
+    // last-year line numbers as this RFx's numbers (e.g. "pickle jar still at line 25"), so its dropped-item findings are discarded.
+    const droppedWords = (D.dropped || []).map(x => String(x.desc || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3));
+    const stillThere = words => D.lines.some(L => words.length && words.every(w => String(L.desc || '').toLowerCase().includes(w)));
+    const aboutDropped = f => f.category === 'dropped_item' || droppedWords.some(ws => !stillThere(ws) && ws.some(w => (String(f.title || '') + ' ' + String(f.detail || '')).toLowerCase().includes(w)));
+    const findings = (data && Array.isArray(data.findings) ? data.findings : []).filter(f => !aboutDropped(f)).map((f, i) => {
       const w = f.where || {};
       let focus = 'meta-scope';
       if (w.type === 'line' && w.line) { const L = D.lines.find(x => x.line === Number(w.line)); focus = L ? `line-${L.key}-desc` : 'lines'; }
