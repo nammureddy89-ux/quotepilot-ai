@@ -63,7 +63,7 @@ QP.screens = QP.screens || {};
       ${e.uncovered.length ? `<div class="say err" style="margin:0 0 10px">${e.uncovered.length} item(s) are not covered by this option (line ${e.uncovered.join(', ')}).</div>` : ''}
       <label class="small" style="color:#344054">Reason for this decision <span class="muted">(saved in the award record)</span></label>
       <textarea id="why" class="reasonbox" placeholder="e.g. Lowest true cost; keeps Deccan's 3% discount; two suppliers reduce supply risk."></textarea>
-      <div class="row" style="margin-top:10px"><button class="btn primary" id="confirmAward" disabled>Confirm award</button><span class="small muted">Numbers are frozen at this moment in the award record.</span></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="confirmAward" disabled>Confirm award</button><span class="small muted">Your decision and these numbers will be saved as a record. Later changes won’t alter it.</span></div>
     </div></div>`;
   }
 
@@ -102,7 +102,7 @@ QP.screens = QP.screens || {};
           <div class="k">Qualification</div><div>${a.qualification.filter(x => x.processed).map(x => `${esc(x.name)}: ${x.pass ? '✓ qualifies' : '✗ ' + esc(x.why)}`).join('<br>')}</div>
           <div class="k">Risks accepted</div><div>${a.risks.map(r => esc(r.text)).join('<br>') || '—'}</div>
           <div class="k">Review decisions used</div><div>${a.issueDecisions.length ? a.issueDecisions.map(d => `${esc(d.vendor)} — ${esc(d.title)}: ${esc(d.action)}${d.value != null ? ' ₹' + esc(d.value) : ''}${d.reason ? ` <i>(“${esc(d.reason)}”)</i>` : ''}`).join('<br>') : 'none'}</div>
-          <div class="k">Decided</div><div>${when} · Priya Deshmukh · numbers frozen at this moment</div>
+          <div class="k">Decided</div><div>${when} · Priya Deshmukh · numbers saved as they were at this moment</div>
         </div>
         <div id="memoSlot"></div>
       </div></div>`;

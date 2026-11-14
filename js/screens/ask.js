@@ -6,13 +6,26 @@ QP.screens = QP.screens || {};
 (function () {
   const esc = s => QP.esc(s);
   let busy = null;   // { ctrl, q, status }
-  const SUGGEST = [
-    'What if we split it, cheapest per line, but only among vendors who cleared the quality questionnaire?',
-    'Compare one vendor, cheapest per item and the best 2-vendor split on true cost',
-    'Which vendor is cheapest on 7-ply boxes, and how does that compare to last year?',
-    'Show payment terms, capacity and our history with each vendor',
-    'What if the dollar rate goes to ₹84?'
-  ];
+  // Suggested questions are built from the live RFx and replies (only the question text; answers are always computed).
+  function suggestions(m) {
+    const R = QP.state.rfx, out = [];
+    const read = m.processedIds.length;
+    if (read >= 2) out.push('What if we split it, cheapest per line, but only among vendors who cleared the quality questionnaire?');
+    if (read >= 2) out.push('Compare one vendor, cheapest per item and the best 2-vendor split on total cost');
+    const plies = [...new Set(R.lines.map(L => L.ply).filter(Boolean))].sort((a, b) => b - a);
+    const hasLastYear = R.lines.some(L => L.lastYear);
+    if (plies.length > 1) out.push(`Which vendor is cheapest on ${plies[0]}-ply boxes${hasLastYear ? ', and how does that compare to last year' : ''}?`);
+    else out.push(`Which vendor is cheapest on each item${hasLastYear ? ', and how does that compare to last year' : ''}?`);
+    out.push('Show payment terms, capacity and our history with each vendor');
+    // A currency what-if only when a vendor that was read actually quoted in a foreign currency.
+    const fx = (m.flags || []).find(f => f.type === 'currency' && m.vendors[f.vendor] && m.vendors[f.vendor].processed);
+    if (fx) {
+      const cur = (fx.title.match(/Quoted in ([A-Z]{3})/) || [])[1];
+      const rate = cur && R.fxRates && R.fxRates[cur];
+      if (rate) out.push(`What if the ${cur === 'USD' ? 'dollar' : cur} rate goes to ₹${Math.round(rate - 4)}?`);
+    }
+    return out;
+  }
   const turns = () => (QP.state.askTurns = QP.state.askTurns || []);
 
   // Single-series horizontal bar chart: one hue, thin bars, value label at the end, tooltip on hover.
@@ -25,7 +38,7 @@ QP.screens = QP.screens || {};
       return `<g><title>${esc(b.label)}: ${esc(b.text)}</title>
         <rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"/>
         <text x="${LW - 10}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="12" fill="#344054">${esc(b.label.length > 46 ? b.label.slice(0, 45) + '…' : b.label)}</text>
-        <rect x="${xa}" y="${y + 8}" width="${w}" height="${rowH - 16}" rx="4" fill="${b.hl ? '#1d3fb8' : '#2f5bea'}"/>
+        <rect x="${xa}" y="${y + 8}" width="${w}" height="${rowH - 16}" rx="4" fill="${b.alt ? '#b8c0cc' : b.hl ? '#1d3fb8' : '#2f5bea'}"/>
         <text x="${Math.max(x(b.value), x0) + 6}" y="${y + rowH / 2 + 4}" font-size="12" fill="#1d2433" font-weight="${b.hl ? 650 : 500}">${esc(b.text)}${b.hl ? '  · lowest' : ''}</text></g>`; }).join('');
     return `<div class="achart"><div class="small muted" style="margin-bottom:4px">${esc(ch.label)}</div>
       <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="${esc(ch.label)}">
@@ -67,9 +80,11 @@ QP.screens = QP.screens || {};
       <div class="row" style="margin-top:8px">${(t.clarify.options || []).map(o => `<button class="btn sm" data-clar="${ti}" data-opt="${esc(o)}">${esc(o)}</button>`).join('')}</div>
       <div class="small muted" style="margin-top:6px">Or type your own answer below.</div></div></div>`;
     const notes = [...new Set((t.results || []).flatMap(r => r.notes || []))];
-    const caveats = [...notes, ...(t.aiCaveats || [])];
+    // Caveats come from code only. The AI's own caveats only re-word these notes, so showing both listed everything twice.
+    const caveats = notes;
     const checkLine = t.check === 'ok' ? '<span class="tile-ok">✓ Every number in this answer was checked against the computed results</span>'
       : t.check === 'mismatch' ? `<span style="color:var(--amber)">The AI's wording used a number not in the results (${esc((t.badNumbers || []).join(', '))}), so the plain code summary is shown instead.</span>`
+      : t.check === 'scenario_word' ? '<span style="color:var(--amber)">The AI described this as a what-if, but no what-if was run, so the plain code summary is shown instead.</span>'
       : t.check === 'ai_busy' ? '<span style="color:var(--amber)">The AI was busy writing the answer, so the plain code summary is shown. The numbers below are complete.</span>' : '';
     return `<div class="turn"><div class="qb">${esc(t.q)}</div><div class="ab">
       ${t.plan && t.plan.understood ? `<div class="small muted">Understood as: ${esc(t.plan.understood)}</div>` : ''}
@@ -111,15 +126,15 @@ QP.screens = QP.screens || {};
     const T = turns();
     const unread = QP.VENDORS.filter(V => !m.vendors[V.id].processed).map(V => V.name);
     main.innerHTML = `
-      <div class="head"><div><h1>Ask AI</h1><p>Ask in plain English. The AI plans the steps, <b>plain code computes</b> on the live comparison (your Review Issues decisions included), and the answer shows its method and caveats.</p></div>
+      <div class="head"><div><h1>Ask AI</h1><p>Ask anything about the quotes in plain English. Each answer shows how it was worked out.</p></div>
         <div class="actions">${T.length ? '<button class="btn" id="clearAsk">Clear conversation</button>' : ''}</div></div>
       ${unread.length ? `<div class="say info" style="margin:0 0 12px">Not read yet: ${esc(unread.join(', '))} — answers use the ${m.processedIds.length} replies read so far.</div>` : ''}
-      <div class="chat">${T.length ? T.map(turnHtml).join('') : `<div class="card"><div class="cb"><div class="muted" style="margin-bottom:8px">Try a question:</div>${SUGGEST.map(s => `<button class="sugg" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}
+      <div class="chat">${T.length ? T.map(turnHtml).join('') : `<div class="card"><div class="cb"><div class="muted" style="margin-bottom:8px">Try a question:</div>${suggestions(m).map(s => `<button class="sugg" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}
         ${busy ? `<div class="turn"><div class="qb">${esc(busy.q)}</div><div class="ab"><span class="spinner"></span> <span id="askStatus">${esc(busy.status)}</span> <button class="btn sm" id="stopAsk" style="margin-left:8px">Stop</button></div></div>` : ''}
         <div id="askEnd"></div></div>
       <div class="askbar"><div class="row" style="flex-wrap:nowrap"><textarea id="askBox" rows="2" placeholder="e.g. What if we split it cheapest per line, only among vendors who cleared the questionnaire?" ${busy ? 'disabled' : ''}></textarea>
         <button class="btn primary" id="askBtn" disabled>Ask</button></div>
-        ${T.length ? `<div class="row" style="margin-top:6px;gap:6px">${SUGGEST.slice(0, 3).map(s => `<button class="sugg sm" data-s="${esc(s)}">${esc(s.length > 60 ? s.slice(0, 58) + '…' : s)}</button>`).join('')}</div>` : ''}</div>`;
+        ${T.length ? `<div class="row" style="margin-top:6px;gap:6px">${suggestions(m).slice(0, 3).map(s => `<button class="sugg sm" data-s="${esc(s)}">${esc(s.length > 60 ? s.slice(0, 58) + '…' : s)}</button>`).join('')}</div>` : ''}</div>`;
 
     const box = main.querySelector('#askBox'), btn = main.querySelector('#askBtn');
     box.oninput = () => { btn.disabled = !box.value.trim() || !!busy; };

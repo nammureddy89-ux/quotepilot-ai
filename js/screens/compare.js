@@ -71,7 +71,7 @@ QP.screens = QP.screens || {};
       <div class="legend-bar">
         <span><span class="mk mk-red">●</span>needs your decision</span>
         <span><span class="mk mk-amber">●</span>worth a look</span>
-        <span><span class="lg-best">12.34</span> cheapest on the line</span>
+        <span><span class="lg-best lg-swatch" aria-hidden="true"></span>cheapest on the line</span>
         <span><span class="badge b-converted">conv</span> converted from the vendor's unit / currency (click to see the maths)</span>
         <span><span class="badge b-buyer_assumption">your estimate</span> entered by you — not a quote, never “cheapest”, not in like-for-like</span>
         <span class="muted">Click any number to see where it came from.</span>

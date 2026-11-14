@@ -19,7 +19,10 @@ Rules:
 - Never invent vendors, items or numbers. Vendor ids are A–E as listed.
 - "Cleared the quality questionnaire" / "qualified" = vendors that pass the must-pass rules → vendors.qualified_only = true.
 - "Cheapest per line / item" award questions → award_options with methods ["cheapest"] (add "split2" and "single" when the buyer asks what is best overall or to compare).
-- "What if" questions that change a price, exchange rate or freight, or treat a vendor as qualified → what_if. These are labelled scenarios, never real quotes.
+- "What if" questions that change a price, exchange rate or freight, or treat a vendor as qualified → what_if. These are labelled scenarios, never real quotes. Never use what_if for a question that does not ask "what if".
+- Questions about prices, costs or a chart of prices → line_prices or vendor_totals, never vendor_facts (vendor_facts is for terms, questionnaire answers, certificates and history only).
+- "Last year", "2026", "current contract", "this year vs last year", "2026 vs 2027" → our 2026 contract price per item (one price per item, not each vendor's own 2026 price). Per vendor overall → vendor_totals measure "vs_last_year_pct"; per item → line_prices compare_to "last_year".
+- Certificates, ISO, expiry, validity of documents → vendor_facts with "iso_9001" (and "test_report" if asked); add an issues step with severity "all" when the buyer asks about warnings or problems.
 - If the question is genuinely ambiguous in a way that changes the result (e.g. which vendors, which items, which measure), set "clarify" with one short question and 2–4 short options, and give no steps. Do not ask back when a sensible default exists.
 - If earlier turns are given, the new question may refer to them ("now only 5-ply", "same but exclude Deccan").
 - Output JSON only.
@@ -40,7 +43,8 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
   K.WRITE_SYSTEM = `You write the answer to a procurement buyer's question, using ONLY the computed results provided. Rules:
 - 2–4 short sentences, plain Indian business English, lead with the direct answer.
 - Every number you write must be copied exactly as it appears in the results (same rounding and units, e.g. "₹3.73 cr", "₹41.4 L", "27/30" for 27 of 30 items). Do not calculate, round differently or add numbers of your own.
-- Mention a scenario as a scenario ("in this what-if…"). Do not recommend beyond what the results show.
+- Only if the results are marked SCENARIO, call it a what-if scenario. Otherwise never use the words "scenario" or "what-if".
+- Answer exactly what was asked; if the results show the question assumed something the data does not have, say so plainly in one sentence. Do not recommend beyond what the results show.
 - caveats: up to 3 short points the buyer should know (only from the results' notes). Output JSON only: { "answer": string, "caveats": [string] }`;
 
   // ---------- context for the planner (no prices) ----------
@@ -160,6 +164,7 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
         else if (measure === 'vs_last_year_pct') { v = ly ? (now - ly) / ly * 100 : null; txt = v == null ? '—' : pct(v / 100); }
         else if (measure === 'items_quoted') { v = n; txt = `${n}/${L.length}`; }
         else { if (measure === 'landed_total') landedNote = true; v = val; txt = QP.fmtCr(val); }
+        if (measure === 'vs_last_year_pct') return { id, v, Vendor: vo.name, Value: txt, 'Items priced': `${n}/${L.length}`, now, ly };
         return { id, v, Vendor: vo.name, Value: txt, 'Items priced': `${n}/${L.length}` }; });
       if (landedNote) notes.push('Landed total (with freight and discounts) exists only for the whole RFx; for a subset of items the items value is shown.');
       if (measure === 'like_for_like') notes.push(`Fair comparison uses only the ${m.likeForLikeLines.length} items every vendor quoted.`);
@@ -167,6 +172,21 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       const asc = measure !== 'items_quoted';
       rows.sort((a, b) => a.v == null ? 1 : b.v == null ? -1 : asc ? a.v - b.v : b.v - a.v);
       const mlabel = { landed_total: 'Landed total', items_value: 'Items value', like_for_like: 'Fair comparison total', vs_last_year_pct: 'Prices vs last year', items_quoted: 'Items quoted' }[measure];
+      if (measure === 'vs_last_year_pct') {
+        // 2027 quote vs the SAME items at what we paid on the 2026 contract. "Last year" is our own contract price per item,
+        // not each vendor's own 2026 price (we only have a 2026 price for the items we bought last year).
+        notes.push('“Last year / 2026” is what we paid on our 2026 contract for each item — one price per item, not each vendor’s own 2026 price. New items have no 2026 price and are left out of this comparison.');
+        const nNew = L.filter(Ln => !Ln.lastYear).length;
+        const lab = r => `${r.Vendor}`;
+        return { title: `2027 quotes vs our 2026 contract prices — ${describeLines(s.lines, L.length - nNew)}`,
+          rows: rows.map(r => ({ Vendor: r.Vendor, '2027 quote (same items)': r.ly ? QP.fmtCr(r.now) : '—', 'At our 2026 contract price': r.ly ? QP.fmtCr(r.ly) : '—', Change: r.Value, 'Items priced': r['Items priced'] })),
+          facts: rows.map((r, i) => `${i + 1}. ${r.Vendor}: 2027 quote ${r.ly ? QP.fmtCr(r.now) : '—'} vs ${r.ly ? QP.fmtCr(r.ly) : '—'} for the same items at our 2026 contract price, change ${r.Value} (${r['Items priced']} items priced).`),
+          notes, summary: rows.map(r => `${r.Vendor} ${r.Value}`).join('; ') + ' vs our 2026 contract prices.',
+          chart: { label: '₹ crore before GST — dark: 2027 quote · grey: same items at our 2026 contract price', bars: rows.filter(r => r.ly).flatMap(r => [
+            { label: lab(r) + ' — 2027 quote', value: r.now / 1e7, text: QP.fmtCr(r.now) + ' (' + r.Value + ')' },
+            { label: lab(r) + ' — 2026 contract price', value: r.ly / 1e7, text: QP.fmtCr(r.ly), alt: true }]) },
+          method: `For each vendor: Σ (2027 ₹ per piece × annual quantity) over the continuing items it priced, compared with Σ (our 2026 contract ₹ per piece × the same quantity) for exactly the same items. Your estimates are excluded.` };
+      }
       return { title: `${mlabel} by vendor — ${describeLines(s.lines, L.length)}`, rows: rows.map(r => ({ Vendor: r.Vendor, [mlabel]: r.Value, 'Items priced': r['Items priced'] })),
         facts: rows.map((r, i) => `${i + 1}. ${r.Vendor}: ${r.Value} (${r['Items priced']} items priced).`), notes, summary: rows.slice(0, 3).map(r => `${r.Vendor} ${r.Value} (${r['Items priced']})`).join('; ') + '.',
         chart: { label: mlabel + (measure === 'vs_last_year_pct' ? ' (%)' : measure === 'items_quoted' ? '' : ', ₹ crore'), bars: rows.filter(r => r.v != null).map(r => ({ label: r.Vendor, value: measure.match(/pct|quoted/) ? r.v : r.v / 1e7, text: r.Value })) },
@@ -178,7 +198,8 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       const get = (id, f) => { const vo = m.vendors[id], ex = vo.ex || {}, t = ex.commercial_terms || {}, qq = ex.questionnaire || {};
         switch (f) {
           case 'qualification': return q[id].pass ? 'Qualifies' : 'Fails: ' + q[id].failed.map(x => x.rule.label + ' (' + x.text + ')').join('; ');
-          case 'iso_9001': return QP.qLabel('iso_9001', qq.iso_9001 || {}, ex).text;
+          case 'iso_9001': { const r = QP.award.RULES.iso_9001.check(ex, vo, m);
+            return r.text + (r.note ? ' — ' + r.note.toUpperCase() : '') + (!r.pass && /expired/i.test(r.text) ? ' — EXPIRED BEFORE THE CONTRACT STARTS' : ''); }
           case 'capacity': return qq.monthly_capacity && qq.monthly_capacity.boxes_per_month ? fmt(qq.monthly_capacity.boxes_per_month, 0) + '/month' : QP.NOT_MENTIONED;
           case 'test_report': return QP.qLabel('test_report', qq.test_report || {}, ex).text;
           case 'food_safe_inks': return QP.qLabel('food_safe_inks', qq.food_safe_inks || {}, ex).text;
@@ -196,6 +217,12 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       const LBL = { qualification: 'Qualification', iso_9001: 'ISO 9001', capacity: 'Capacity', test_report: 'Test report', food_safe_inks: 'Food-safe inks', payment_days: 'Payment', validity: 'Validity', freight: 'Freight', lead_time: 'Lead time', discounts: 'Discounts', price_variation: 'Price variation', history: 'History with us', open_issues: 'Open issues', items_quoted: 'Items quoted' };
       const rows = ids.map(id => { const r = { Vendor: vname(m, id) }; F.forEach(f => { r[LBL[f] || f] = get(id, f); }); return r; });
       if (F.includes('history')) notes.push('History is our own record for current suppliers only; it does not change any rupee total.');
+      const R = QP.state.rfx;
+      if (F.includes('iso_9001')) {
+        const exp = ids.filter(id => /EXPIRES DURING THE CONTRACT/.test(get(id, 'iso_9001'))).map(id => vname(m, id));
+        rows.forEach(r => { r[LBL.iso_9001] = r[LBL.iso_9001].replace(' — EXPIRES DURING THE CONTRACT', ' — expires during the contract').replace(' — EXPIRED BEFORE THE CONTRACT STARTS', ' — expired before the contract starts'); });
+        notes.push(`Contract period: ${R.periodStart && R.contractEnd ? R.periodStart + ' to ' + R.contractEnd : (R.period || 'not stated')}. ISO certificate expiring during the contract: ${exp.length ? exp.join(', ') : 'none of the vendors read'}.`);
+      }
       return { title: 'Vendor facts', rows, facts: rows.map(r => Object.entries(r).map(([k, v]) => `${k}: ${v}`).join('; ') + '.'), notes, chart: null,
         method: `Read from each vendor's extracted reply (questionnaire, terms, attachments) and our supplier history. Every value links to its source in Compare → Questionnaire.` };
     },
@@ -282,7 +309,10 @@ LF (line filter): { lines: [line numbers]|null, ply: [3|5|7]|null, plant: ["Ranj
       const ans = (w.data && w.data.answer) || '';
       const cav = ((w.data && w.data.caveats) || []).slice(0, 3);
       const bad = K.checkNumbers(ans + ' ' + cav.join(' '), facts + ' ' + question);
-      if (ans && !bad.length) { turn.answer = ans; turn.aiCaveats = cav; turn.check = 'ok'; }
+      const hasScenario = turn.results.some(r => r.scenario);
+      const fakeScenario = !hasScenario && /\b(what[- ]if|scenario)\b/i.test(ans);
+      if (ans && !bad.length && !fakeScenario) { turn.answer = ans; turn.aiCaveats = cav; turn.check = 'ok'; }
+      else if (fakeScenario) { turn.answer = turn.codeSummary; turn.check = 'scenario_word'; }
       else { turn.answer = turn.codeSummary; turn.check = ans ? 'mismatch' : 'empty'; turn.badNumbers = bad; }
     } catch (e) {
       if (e.cancelled) throw e;
