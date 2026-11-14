@@ -74,7 +74,15 @@ window.QP = window.QP || {};
       out.processedIds.push(V.id);
 
       const byLine = {};
-      (ex.lines || []).forEach(l => { if (l && l.rfx_line != null) { (byLine[l.rfx_line] = byLine[l.rfx_line] || []).push(l); } });
+      const rfxLineNos = new Set(rfx.lines.map(L => L.line));
+      // Items the vendor priced that are not in our RFx: reported by the AI in not_in_rfx, plus (safety net)
+      // any entry the AI gave a line number our RFx doesn't have. Never silently dropped — they become a 🟡 issue.
+      vo.extraItems = (ex.not_in_rfx || []).filter(Boolean).slice();
+      (ex.lines || []).forEach(l => {
+        if (!l) return;
+        if (l.rfx_line == null || !rfxLineNos.has(Number(l.rfx_line))) { vo.extraItems.push(l); return; }
+        (byLine[l.rfx_line] = byLine[l.rfx_line] || []).push(l);
+      });
       const nq = {};
       (ex.not_quoted || []).forEach(n => { if (n && n.rfx_line != null) nq[n.rfx_line] = n; });
 
@@ -183,6 +191,15 @@ window.QP = window.QP || {};
       if (currencyHit) addFlag(vo, { type: 'currency', line: null, sev: 'yellow', title: `Quoted in ${currencyHit} — converted`, detail: `Converted at the RFx rate ₹${fmt(rfx.fxRates[currencyHit])} per ${currencyHit}. Real cost moves with the exchange rate.`, source: (ex.lines.find(l => l.currency === currencyHit) || {}).source, actions: ['confirm'] });
       if (gstHit) addFlag(vo, { type: 'gst', line: null, sev: 'yellow', title: 'Prices included GST — removed', detail: `${rfx.gstRate * 100}% GST removed to compare like for like.`, source: null, actions: ['confirm'] });
       if (perKgLines.length) addFlag(vo, { type: 'perkg', line: null, sev: 'yellow', title: 'Priced per kg — converted using spec box weight', detail: `${perKgLines.length} lines: price per kg × RFx box weight. Heavier boxes would cost more; printing not mentioned.`, source: vo.cells[perKgLines[0]].source, actions: ['confirm', 'ask'] });
+
+      // ---------- items quoted that are not in our RFx ----------
+      if (vo.extraItems.length) {
+        const n = vo.extraItems.length;
+        const show = vo.extraItems.slice(0, 5).map(x => `“${x.vendor_item_text || 'item'}”${x.price_value != null ? ` at ${x.price_value}${x.price_basis_text ? ' ' + x.price_basis_text : ''}` : ''}`).join('; ');
+        addFlag(vo, { type: 'not_in_rfx', line: null, sev: 'yellow', title: `Quoted ${n} item${n > 1 ? 's' : ''} not in your RFx`,
+          detail: `Not compared and not counted in any total. ${show}${n > 5 ? `; and ${n - 5} more` : ''}. The vendor may have quoted from an older list — check the source.`,
+          source: srcOf(vo.extraItems[0]), actions: ['confirm', 'ask'] });
+      }
 
       // ---------- is this reply really from this vendor? ----------
       const docName = ex.vendor_name_in_documents;

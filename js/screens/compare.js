@@ -1,4 +1,4 @@
-// Stage 5 — Compare: 30 × 5 grid in ₹/piece (before GST, before freight), totals, and questionnaire side by side.
+// Stage 5 — Compare: RFx lines × 5 vendors grid in ₹/piece (before GST, before freight), totals, and questionnaire side by side.
 window.QP = window.QP || {};
 QP.screens = QP.screens || {};
 
@@ -51,6 +51,7 @@ QP.screens = QP.screens || {};
   function pricesTab(m) {
     const ids = QP.VENDORS.map(v => v.id);
     const lines = QP.state.rfx.lines;
+    const nLines = lines.length;
     const lflN = m.likeForLikeLines.length;
     const foot = (label, fn, cls = '') => `<tr><td class="l" colspan="2">${label}</td><td class="num"></td>${ids.map(id => `<td class="num ${cls}">${m.vendors[id].processed ? fn(m.vendors[id]) : ''}</td>`).join('')}</tr>`;
     const minOf = key => Math.min(...m.processedIds.map(id => m.vendors[id].totals[key]).filter(v => v > 0));
@@ -58,12 +59,13 @@ QP.screens = QP.screens || {};
     const anyDisc = m.processedIds.some(id => (m.vendors[id].discounts || []).length);
     const gst = QP.state.rfx.gstRate * 100;
     const pct = x => (x > 0 ? '+' : '') + QP.fmt(x * 100, 1) + '%';
-    // Summary first: one card per vendor, totals read before the 30 lines
+    // Summary first: one card per vendor, totals read before the line grid
     const strip = `<div class="small muted" style="margin-bottom:6px">Landed total before GST, if each vendor got every item it priced (prices + freight − discount when its condition is met). The split between vendors is decided in Award.</div><div class="vsum">${m.processedIds.map(id => { const v = m.vendors[id];
       return `<div class="vcard"><div class="vn">${esc(v.name)}</div>
+        <div class="small muted">Landed total, before GST</div>
         <div class="vt">${v.landed.total == null ? '<span style="color:var(--red)">Incomplete</span>' : QP.fmtCr(v.landed.total)}</div>
         ${v.landed.total == null ? '<div class="small muted">freight amount unknown</div>' : ''}
-        <div class="vm">${v.landed.vsLastYear != null ? `<span style="color:${v.landed.vsLastYear <= 0 ? 'var(--green)' : 'var(--red)'}">${pct(v.landed.vsLastYear)}</span> prices vs last year · ` : ''}${v.totals.quoted}/30 quoted${v.totals.estimates ? ` + ${v.totals.estimates} est.` : ''}</div>
+        <div class="vm">${v.landed.vsLastYear != null ? `<span style="color:${v.landed.vsLastYear <= 0 ? 'var(--green)' : 'var(--red)'}">${pct(v.landed.vsLastYear)}</span> prices vs last year · ` : ''}${v.totals.quoted}/${nLines} lines priced${v.totals.estimates ? ` + ${v.totals.estimates} est.` : ''}${v.extraItems && v.extraItems.length ? ` · <span style="color:var(--amber)">+${v.extraItems.length} not in RFx</span>` : ''}</div>
         <div class="vm">${v.landed.discount ? `incl. −${QP.fmtL(v.landed.discount)} discount · ` : ''}${v.openRed ? `<a href="#" data-goissues="${v.id}" style="color:var(--red)">${v.openRed} 🔴 open</a>` : '<span class="tile-ok">✓ no must-resolve</span>'}</div></div>`; }).join('')}</div>`;
     return `${strip}
       <div class="legend-bar">
@@ -75,10 +77,10 @@ QP.screens = QP.screens || {};
         <span class="muted">Click any number to see where it came from.</span>
       </div>
       <div class="gridwrap"><table class="grid">
-        <thead><tr><th class="l">#</th><th class="l">Item · plant · qty/yr</th><th>Last year</th>${ids.map(id => { const vo = m.vendors[id]; return `<th style="white-space:normal;min-width:110px">${esc(vo.name)}<div class="small muted" style="font-weight:400">${vo.processed ? vo.totals.quoted + '/30 quoted' + (vo.totals.estimates ? ` · <span style="color:var(--violet)">${vo.totals.estimates} your estimate</span>` : '') : 'not processed'}</div>${(vo.discounts || []).map(d => `<div class="disc-chip" title="${esc(d.text)}">${d.percent}% off if order &gt; ${QP.fmtCr(d.threshold)}</div>`).join('')}</th>`; }).join('')}</tr></thead>
+        <thead><tr><th class="l">#</th><th class="l">Item · plant · qty/yr</th><th>Last year</th>${ids.map(id => { const vo = m.vendors[id]; return `<th style="white-space:normal;min-width:110px">${esc(vo.name)}<div class="small muted" style="font-weight:400">${vo.processed ? '₹ per box, before GST<br>' + vo.totals.quoted + '/' + nLines + ' priced' + (vo.extraItems && vo.extraItems.length ? ` · <span style="color:var(--amber)">+${vo.extraItems.length} not in RFx</span>` : '') + (vo.totals.estimates ? ` · <span style="color:var(--violet)">${vo.totals.estimates} your estimate</span>` : '') : 'not processed'}</div>${(vo.discounts || []).map(d => `<div class="disc-chip" title="${esc(d.text)}">${d.percent}% off if order &gt; ${QP.fmtCr(d.threshold)}</div>`).join('')}</th>`; }).join('')}</tr></thead>
         <tbody>${lines.map(L => `<tr><td class="l">${L.line}</td><th>${esc(L.desc)}<span class="sub">${L.ply}-ply · ${esc(L.plant.split(' ')[0])} · ${(L.qty / 1000).toLocaleString('en-IN')}k/yr</span></th><td class="num muted">${L.lastYear ? QP.fmt(L.lastYear) : 'new'}</td>${ids.map(id => cellHtml(m, id, L)).join('')}</tr>`).join('')}</tbody>
         <tfoot>
-          ${foot(`<b>Priced items</b>`, v => `${QP.fmtCr(v.totals.full)}<div class="small muted">${v.totals.quoted}/30 quoted</div>` + (v.totals.estimates ? `<div class="small" style="color:var(--violet)">incl. ${v.totals.estimates} your estimate (${QP.fmtL(v.totals.estimateValue)})</div>` : '') + (v.totals.missing ? `<div class="small" style="color:var(--red)">${v.totals.missing} not quoted — not in total</div>` : ''))}
+          ${foot(`<b>Priced items</b>`, v => `${QP.fmtCr(v.totals.full)}<div class="small muted">${v.totals.quoted}/${nLines} priced</div>` + (v.totals.estimates ? `<div class="small" style="color:var(--violet)">incl. ${v.totals.estimates} your estimate (${QP.fmtL(v.totals.estimateValue)})</div>` : '') + (v.totals.missing ? `<div class="small" style="color:var(--red)">${v.totals.missing} not quoted — not in total</div>` : ''))}
           ${foot('+ Freight', v => v.freight.amount == null ? '<span style="color:var(--red)">extra — amount unknown</span>' : v.freight.kind === 'included' ? '<span class="muted">included</span>' : `+ ${QP.fmtL(v.freight.amount)} <span class="small muted">est.</span> <button class="icon-btn" title="How this is calculated" data-freight="${v.id}">ⓘ</button>`)}
           ${anyDisc ? foot('− Conditional discount', v => (v.discounts || []).map(d => d.met
             ? `<span style="color:var(--green)">−${QP.fmtL(d.saving)}</span><div class="small muted">${d.percent}% · condition met (order &gt; ${QP.fmtCr(d.threshold)})</div>`
@@ -142,7 +144,7 @@ QP.screens = QP.screens || {};
     main.innerHTML = `
       <div class="head"><div><h1>Compare quotes</h1><p>All prices in <b>₹ per piece, before GST</b> (${QP.state.rfx.gstRate * 100}%, recoverable). ${red ? `<a href="#" data-allissues style="color:var(--red)">${red} must-resolve issues open →</a>` : '<span class="tile-ok">✓ No open must-resolve issues</span>'}</p></div>
         <div class="actions"><button class="btn" id="csvBtn">Download CSV</button></div></div>
-      <div class="tabs"><button data-t="prices" class="${tab === 'prices' ? 'on' : ''}">Prices (30 lines)</button><button data-t="q" class="${tab === 'q' ? 'on' : ''}">Questionnaire, terms &amp; documents</button></div>
+      <div class="tabs"><button data-t="prices" class="${tab === 'prices' ? 'on' : ''}">Prices (${QP.state.rfx.lines.length} lines)</button><button data-t="q" class="${tab === 'q' ? 'on' : ''}">Questionnaire, terms &amp; documents</button></div>
       ${tab === 'prices' ? pricesTab(m) : qTab(m)}`;
     main.querySelectorAll('.tabs [data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; QP.render(); });
     main.querySelector('#csvBtn').onclick = () => csv(m);

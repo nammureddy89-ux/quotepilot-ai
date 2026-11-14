@@ -11,8 +11,8 @@ window.QP = window.QP || {};
     { id: 'responses', n: 3, label: 'Vendor Responses' },
     { id: 'issues', n: 4, label: 'Review Issues' },
     { id: 'compare', n: 5, label: 'Compare' },
-    { id: 'ask', n: 6, label: 'Ask AI', later: true },
-    { id: 'award', n: 7, label: 'Award', later: true }
+    { id: 'ask', n: 6, label: 'Ask AI' },
+    { id: 'award', n: 7, label: 'Award' }
   ];
   QP.screens = QP.screens || {};
 
