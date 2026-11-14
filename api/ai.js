@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
   if (typeof body === 'string') {
     try { body = JSON.parse(body); } catch (e) { body = {}; }
   }
-  const { system, parts, json, maxTokens } = body || {};
+  const { system, parts, json, maxTokens, thinking } = body || {};
   if (!Array.isArray(parts) || parts.length === 0) {
     res.status(400).json({ error: 'No content sent to the AI.' });
     return;
@@ -51,15 +51,32 @@ module.exports = async function handler(req, res) {
   const tried = [];
   let lastError = 'Unknown error', lastStatus = 500;
 
+  // Short thinking (thinking='low'): Gemini's hidden "thinking" counts against maxOutputTokens.
+  // On big answers (the 30-line RFx draft) unlimited thinking made replies run 4–5 min and get cut off.
+  const thinkingFor = model => {
+    if (thinking !== 'low') return null;
+    return /^gemini-2\./.test(model) ? { thinkingBudget: 1024 } : { thinkingLevel: 'low' };
+  };
+  const call = (model, body, ms) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(Math.max(30000, ms))
+  });
+
   for (const model of models) {
     if (Date.now() - started > TIME_BUDGET_MS) break;
     try {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(payload)
-      });
-      const data = await r.json().catch(() => ({}));
+      const left = TIME_BUDGET_MS + 30000 - (Date.now() - started);   // never run past Vercel's 300 s
+      const tc = thinkingFor(model);
+      const body1 = tc ? { ...payload, generationConfig: { ...payload.generationConfig, thinkingConfig: tc } } : payload;
+      let r = await call(model, body1, left);
+      let data = await r.json().catch(() => ({}));
+      if (tc && r.status === 400 && /thinking/i.test((data.error && data.error.message) || '')) {
+        // This model doesn't accept the thinking setting: ask again without it rather than failing.
+        r = await call(model, payload, TIME_BUDGET_MS + 30000 - (Date.now() - started));
+        data = await r.json().catch(() => ({}));
+      }
       if (r.ok) {
         const cand = (data.candidates || [])[0] || {};
         const text = ((cand.content || {}).parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
@@ -73,7 +90,7 @@ module.exports = async function handler(req, res) {
       if (!retryable) break;            // e.g. bad key or bad request: no point trying other models
       if (r.status === 503 || r.status === 500) await sleep(1500);
     } catch (e) {
-      lastError = e.message; tried.push(`${model}: network error`);
+      lastError = e.name === 'TimeoutError' ? 'timed out' : e.message; lastStatus = e.name === 'TimeoutError' ? 504 : lastStatus; tried.push(`${model}: ${e.name === 'TimeoutError' ? 'timed out' : 'network error'}`);
     }
   }
 
