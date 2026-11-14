@@ -124,7 +124,7 @@ Hard rules:
       { type: 'text', text: `--- BUYER'S BRIEF ---\n${brief}` },
       { type: 'text', text: SCHEMA }
     ];
-    const { data, model, timing } = await QP.callAI({ system: SYSTEM, parts, json: true, maxTokens: 16384, signal: opts.signal, onStatus: opts.onStatus });
+    const { data, model, timing } = await QP.callAI({ system: SYSTEM, parts, json: true, maxTokens: 32768, thinking: 'low', signal: opts.signal, onStatus: opts.onStatus });
     if (!data || !Array.isArray(data.lines_kept)) throw new Error('The AI answer did not contain the line items. Nothing was imported — try again.');
     return { data, model, timing };
   };
@@ -383,7 +383,7 @@ ${t.map((x, i) => `${i + 1}. ${x.text}`).join('\n') || '(none)'}`;
       { type: 'text', text: `--- RFx AS VENDORS WILL RECEIVE IT ---\n${QP.vendorCopyText(D)}` },
       { type: 'text', text: CHECK_SCHEMA }
     ];
-    const { data, model, timing } = await QP.callAI({ system: CHECK_SYSTEM, parts, json: true, maxTokens: 4096, signal: opts.signal, onStatus: opts.onStatus });
+    const { data, model, timing } = await QP.callAI({ system: CHECK_SYSTEM, parts, json: true, maxTokens: 8192, thinking: 'low', signal: opts.signal, onStatus: opts.onStatus });
     // Dropped items are checked by plain code (by file row), which is reliable. The AI tends to read the brief's
     // last-year line numbers as this RFx's numbers (e.g. "pickle jar still at line 25"), so its dropped-item findings are discarded.
     const droppedWords = (D.dropped || []).map(x => String(x.desc || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3));
