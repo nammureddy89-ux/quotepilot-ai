@@ -20,13 +20,13 @@ window.QP = window.QP || {};
     });
   }
 
-  async function once({ system, parts, json, maxTokens, signal }) {
+  async function once({ system, parts, json, maxTokens, thinking, signal }) {
     let r;
     try {
       r = await fetch('/api/ai', {
         method: 'POST', signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, parts, json, maxTokens })
+        body: JSON.stringify({ system, parts, json, maxTokens, thinking })
       });
     } catch (e) {
       if (signal && signal.aborted) throw new Cancelled();
@@ -45,11 +45,11 @@ window.QP = window.QP || {};
 
   // onStatus(text) is called with progress messages like "AI is busy, retrying in 20 s (attempt 2 of 4)"
   // Also returns timing: attempts (1 = first try worked) and waitedMs (time spent waiting between retries).
-  QP.callAI = async function ({ system, parts, json = true, maxTokens, signal, onStatus }) {
+  QP.callAI = async function ({ system, parts, json = true, maxTokens, thinking, signal, onStatus }) {
     let waitedMs = 0;
     for (let attempt = 0; ; attempt++) {
       try {
-        const data = await once({ system, parts, json, maxTokens, signal });
+        const data = await once({ system, parts, json, maxTokens, thinking, signal });
         const timing = { attempts: attempt + 1, waitedMs, modelsTried: data.tried || [] };
         if (!json) return { text: data.text, model: data.model, timing };
         const parsed = QP.parseJSONLoose(data.text);
