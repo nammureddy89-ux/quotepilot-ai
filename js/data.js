@@ -1,5 +1,6 @@
 // Demo data for Sahyadri Foods (all fictional).
-// RFX = the RFx as sent to vendors (built in stage 1). lastYear is PRIVATE: never sent to AI or vendors.
+// RFX_SEED = the prepared RFx, used ONLY by the labelled backup button in stage 1 ("Load prepared RFx — skips the AI").
+// lastYear / supplier2026 are PRIVATE: never sent to vendors or to the extraction AI.
 window.QP = window.QP || {};
 
 QP.COMPANY = {
@@ -8,8 +9,32 @@ QP.COMPANY = {
   buyer: 'Priya Deshmukh, Packaging Category Manager',
   email: 'priya.deshmukh@sahyadrifoods.example',
   plants: ['Ranjangaon (Pune)', 'Jejuri (Pune)', 'Sinnar (Nashik)'],
+  plantAddresses: {
+    'Ranjangaon (Pune)': 'Plot B-17, Ranjangaon MIDC, Shirur, Pune 412220',
+    'Jejuri (Pune)': 'Plot C-5, Jejuri MIDC, Purandar, Pune 412303',
+    'Sinnar (Nashik)': 'Plot F-41, Sinnar MIDC, Nashik 422103'
+  },
+  gstin: '27AAKCS4821M1Z6',
+  phone: '+91 98220 00000',
   standardPaymentDays: 60
 };
+
+// Stage 1 demo inputs (Priya's own material). The AI structures these; nothing below is an AI answer.
+QP.SAMPLE_CONTRACT_FILE = 'samples/rfx/Sahyadri_Box_Contract_2026.xlsx';
+QP.SAMPLE_BRIEF = `Renewing our box contract for 1 Jan 2027 to 31 Dec 2027. Use last year's contract (attached) as the base.
+
+Changes for 2027:
+- Keep the same specs, plants and annual quantities as 2026 for all continuing lines.
+- Drop the pickle jar carton (Line 25). We stopped the glass jar range.
+- Add 2 new sizes:
+  1. Makhana snack shipper, 5-ply, 460 x 340 x 300 mm, 2-colour flexo print, 46,000 pcs a year, delivered to Ranjangaon.
+  2. Quick-commerce small box, 3-ply, 300 x 200 x 150 mm, 1-colour flexo print, box weight 160 g, 60,000 pcs a year, delivered to Ranjangaon.
+
+Commercials: prices in Rs per piece, landed at plant, excluding GST. Our standard is 60 days payment from GRN. Quote validity at least 90 days. Any foreign-currency quote will be converted at 1 USD = Rs 88.00.
+
+Need vendors to confirm: ISO 9001 (with certificate), monthly capacity, box compression/bursting test report, food-safe inks for printed boxes.
+
+Quotes due 23 Nov 2026.`;
 
 QP.RFX_SEED = {
   id: 'SF/RFX/2027/003',
@@ -43,7 +68,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 93000,
   "lastYear": 21.43,
-  "supplier2026": "=M9*N9"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 2,
@@ -58,7 +83,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 82000,
   "lastYear": 21.21,
-  "supplier2026": "=M10*N10"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 3,
@@ -73,7 +98,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 49000,
   "lastYear": 23.03,
-  "supplier2026": "=M11*N11"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 4,
@@ -88,7 +113,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 70000,
   "lastYear": 31.16,
-  "supplier2026": "=M12*N12"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 5,
@@ -103,7 +128,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 58000,
   "lastYear": 32.04,
-  "supplier2026": "=M13*N13"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 6,
@@ -118,7 +143,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 36000,
   "lastYear": 33.74,
-  "supplier2026": "=M14*N14"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 7,
@@ -133,7 +158,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 91000,
   "lastYear": 24.75,
-  "supplier2026": "=M15*N15"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 8,
@@ -148,7 +173,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 68000,
   "lastYear": 25.43,
-  "supplier2026": "=M16*N16"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 9,
@@ -163,7 +188,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 84000,
   "lastYear": 27.51,
-  "supplier2026": "=M17*N17"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 10,
@@ -178,7 +203,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 75000,
   "lastYear": 24.08,
-  "supplier2026": "=M18*N18"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 11,
@@ -193,7 +218,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 61000,
   "lastYear": 29.96,
-  "supplier2026": "=M19*N19"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 12,
@@ -208,7 +233,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 39000,
   "lastYear": 29.2,
-  "supplier2026": "=M20*N20"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 13,
@@ -223,7 +248,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 34000,
   "lastYear": 29.39,
-  "supplier2026": "=M21*N21"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 14,
@@ -238,7 +263,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 21000,
   "lastYear": 74.02,
-  "supplier2026": "=M22*N22"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 15,
@@ -253,7 +278,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 17000,
   "lastYear": 76.28,
-  "supplier2026": "=M23*N23"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 16,
@@ -268,7 +293,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 13000,
   "lastYear": 85.39,
-  "supplier2026": "=M24*N24"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 17,
@@ -283,7 +308,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 79000,
   "lastYear": 18.48,
-  "supplier2026": "=M25*N25"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 18,
@@ -298,7 +323,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 86000,
   "lastYear": 18.82,
-  "supplier2026": "=M26*N26"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 19,
@@ -313,7 +338,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 45000,
   "lastYear": 28.82,
-  "supplier2026": "=M27*N27"
+  "supplier2026": "Deccan Corrugators"
  },
  {
   "line": 20,
@@ -328,7 +353,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 15000,
   "lastYear": 30.73,
-  "supplier2026": "=M28*N28"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 21,
@@ -343,7 +368,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 11000,
   "lastYear": 31.73,
-  "supplier2026": "=M29*N29"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 22,
@@ -358,7 +383,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 27000,
   "lastYear": 12.81,
-  "supplier2026": "=M30*N30"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 23,
@@ -373,7 +398,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 40000,
   "lastYear": 10.56,
-  "supplier2026": "=M31*N31"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 24,
@@ -388,7 +413,7 @@ QP.RFX_SEED = {
   "plant": "Jejuri (Pune)",
   "qty": 25000,
   "lastYear": 10.23,
-  "supplier2026": "=M32*N32"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 25,
@@ -403,7 +428,7 @@ QP.RFX_SEED = {
   "plant": "Sinnar (Nashik)",
   "qty": 32000,
   "lastYear": 43.26,
-  "supplier2026": "=M34*N34"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 26,
@@ -418,7 +443,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 28000,
   "lastYear": 43.77,
-  "supplier2026": "=M35*N35"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 27,
@@ -433,7 +458,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 20000,
   "lastYear": 99.08,
-  "supplier2026": "=M36*N36"
+  "supplier2026": "Maharashtra Kraft Pack"
  },
  {
   "line": 28,
@@ -448,7 +473,7 @@ QP.RFX_SEED = {
   "plant": "Ranjangaon (Pune)",
   "qty": 9000,
   "lastYear": 9.27,
-  "supplier2026": "=M37*N37"
+  "supplier2026": "Shree Ganesh Packaging"
  },
  {
   "line": 29,

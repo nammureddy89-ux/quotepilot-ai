@@ -6,8 +6,8 @@ window.QP = window.QP || {};
   QP.SHOW_TIMING = true;
 
   QP.STAGES = [
-    { id: 'create', n: 1, label: 'Create RFx', later: true },
-    { id: 'review', n: 2, label: 'Review & Send', later: true },
+    { id: 'create', n: 1, label: 'Create RFx', pre: true },
+    { id: 'review', n: 2, label: 'Review & Send', pre: true },
     { id: 'responses', n: 3, label: 'Vendor Responses' },
     { id: 'issues', n: 4, label: 'Review Issues' },
     { id: 'compare', n: 5, label: 'Compare' },
@@ -16,22 +16,37 @@ window.QP = window.QP || {};
   ];
   QP.screens = QP.screens || {};
 
-  function current() { return (location.hash || '#responses').slice(1).split('?')[0]; }
+  function current() { return (location.hash || (QP.state.rfxSent ? '#responses' : '#create')).slice(1).split('?')[0]; }
+  // Read a parameter from the hash, e.g. #create?focus=line-r9-weightG
+  QP.hashParam = name => { const q = (location.hash.split('?')[1] || ''); const m = q.match(new RegExp('(?:^|&)' + name + '=([^&]*)')); return m ? decodeURIComponent(m[1]) : null; };
+
+  // Stages 3–7 need a sent RFx (every quote is judged against the locked version).
+  function gate(main, s) {
+    main.innerHTML = `<div class="head"><div><h1>${s.label}</h1><p>This step opens once the RFx has been sent to vendors.</p></div></div>
+      <div class="card"><div class="cb empty">The RFx is still a draft.<br><br>
+      <button class="btn primary" onclick="QP.go('${QP.state.draft ? 'review' : 'create'}')">${QP.state.draft ? 'Go to Review &amp; Send →' : 'Create the RFx →'}</button></div></div>`;
+  }
 
   QP.render = function () {
     if (QP._lastScreen && QP._lastScreen !== current()) QP.closeAllModals();
     QP._lastScreen = current();
     const cur = current();
     let issuesOpen = 0;
-    try { const m = QP.compute(); issuesOpen = m.flags.filter(f => f.open && f.sev === 'red').length; QP.model = m; } catch (e) { console.error(e); }
+    if (QP.state.rfxSent) try { const m = QP.compute(); issuesOpen = m.flags.filter(f => f.open && f.sev === 'red').length; QP.model = m; } catch (e) { console.error(e); }
+    const sent = QP.state.rfxSent;
     document.getElementById('nav').innerHTML = QP.STAGES.map(s =>
-      `<a href="#${s.id}" class="${s.id === cur ? 'on' : ''}"><span class="num">${s.n}</span>${s.label}` +
+      `<a href="#${s.id}" class="${s.id === cur ? 'on' : ''} ${!sent && !s.pre ? 'dim' : ''}"><span class="num">${sent && s.pre ? '✓' : s.n}</span>${s.label}` +
       (s.id === 'issues' && issuesOpen ? `<span class="later" style="color:#fda29b">${issuesOpen} 🔴</span>` : '') +
       (s.later ? '<span class="later">next build</span>' : '') + '</a>'
     ).join('');
-    const screen = QP.screens[cur] || QP.screens.responses;
+    const R = QP.state.rfx, D = QP.state.draft;
+    document.querySelector('.side .proj').innerHTML = sent
+      ? `<b>${QP.esc(R.title)}</b>${QP.esc(QP.COMPANY.name.replace(' Pvt. Ltd.', ''))} · Priya Deshmukh<br>${R.lines.length} lines · ${QP.VENDORS.length} vendors · <span style="color:#75e0a7">Sent</span>`
+      : `<b>${D && D.meta.title ? QP.esc(D.meta.title) : 'New RFx'}</b>${QP.esc(QP.COMPANY.name.replace(' Pvt. Ltd.', ''))} · Priya Deshmukh<br>${D ? D.lines.length + ' lines · ' : ''}<span style="color:#fec84b">Draft</span>`;
+    const stage = QP.STAGES.find(s => s.id === cur) || QP.STAGES[0];
+    const screen = QP.screens[cur] || QP.screens.create;
     const main = document.getElementById('main');
-    try { screen(main); } catch (e) { console.error(e); main.innerHTML = `<div class="card"><div class="cb err">Something went wrong drawing this screen: ${QP.esc(e.message)}</div></div>`; }
+    try { if (!sent && !stage.pre) gate(main, stage); else screen(main); } catch (e) { console.error(e); main.innerHTML = `<div class="card"><div class="cb err">Something went wrong drawing this screen: ${QP.esc(e.message)}</div></div>`; }
     if (QP.flash) { const h = main.querySelector('.head'); if (h) QP.say(h, QP.flash.text, QP.flash.kind, 6000); QP.flash = null; }
   };
 
@@ -101,9 +116,9 @@ window.QP = window.QP || {};
   };
 
   document.getElementById('resetBtn').addEventListener('click', async () => {
-    if (!await QP.confirmBox('Reset demo?', 'This clears all vendor replies, AI results, sent messages and your decisions in this browser.', 'Reset', true)) return;
+    if (!await QP.confirmBox('Reset demo?', 'This clears the RFx draft, the sent RFx, all vendor replies, AI results, sent messages and your decisions in this browser.', 'Reset', true)) return;
     Object.values(QP.busy || {}).forEach(b => b && b.ctrl && b.ctrl.abort()); QP.queue = [];
-    await QP.resetAll(); QP.closeAllModals(); QP.flash = { where: 'head', text: 'Demo reset. All replies, AI results and decisions were cleared.', kind: 'ok' }; QP.go('responses');
+    await QP.resetAll(); QP.closeAllModals(); QP.flash = { where: 'head', text: 'Demo reset. The RFx, replies, AI results and decisions were cleared.', kind: 'ok' }; QP.go('create');
   });
 
   QP.render();

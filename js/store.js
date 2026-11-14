@@ -6,8 +6,10 @@ window.QP = window.QP || {};
 
   function freshState() {
     return {
-      rfx: JSON.parse(JSON.stringify(QP.RFX_SEED)),
-      rfxSent: true,              // Layer 1: RFx treated as sent. Stage 1–2 build this later.
+      rfx: null,                  // the SENT, locked RFx (stages 3–7 judge every quote against it)
+      rfxSent: false,
+      draft: null,                // stage 1–2 working draft (see js/rfx.js)
+      sent: null,                 // send record: { at, channel, to, ignored, aiCheck }
       vendors: {},                // vendorId -> { status, files:[{id,name,mime,size,source}], pastedText, extraction, error, processedAt, model }
       decisions: {},              // flagId -> { action, value, reason, at }
       changeLog: [],              // { at, flagId, vendorId, line, action, from, to, reason }
@@ -20,7 +22,7 @@ window.QP = window.QP || {};
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        if (s && s.rfx) return s;
+        if (s && ('draft' in s || s.rfx)) return s;
       }
     } catch (e) { /* storage blocked or corrupt */ }
     return freshState();
