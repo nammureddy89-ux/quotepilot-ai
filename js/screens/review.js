@@ -9,7 +9,14 @@ QP.screens = QP.screens || {};
 
   function allChecks(D) {
     const rule = QP.rfxChecks(D);
-    const ai = (D.aiCheck && D.aiCheck.findings || []).map(f => Object.assign({}, f, { id: aiId(f) }));
+    if (QP.rfxCheckJob) return rule;   // AI findings are hidden while the AI re-reads the latest version
+    const ai = (D.aiCheck && D.aiCheck.findings || []).map(f => {
+      let id = aiId(f);
+      // same point, new wording: keep it ignored (same category at the same place)
+      const prev = Object.keys(D.ignored).find(k => { const g = D.ignored[k]; return g.src === 'ai' && g.category && g.category === f.category && g.whereKey === f.whereKey; });
+      if (prev) id = prev;
+      return Object.assign({}, f, { id });
+    });
     return rule.concat(ai);
   }
 
@@ -29,14 +36,13 @@ QP.screens = QP.screens || {};
 
   function checkRow(c, D, ro) {
     const ig = D.ignored[c.id];
-    const rechecking = c.src === 'ai' && QP.rfxCheckJob;
     const srcChip = c.src === 'ai' ? '<span class="o ai">AI check</span>' : '<span class="o">Plain check</span>';
     return `<div class="flag ${ig ? 'done' : ''}" data-cid="${esc(c.id)}">
       <div class="dot ${c.sev === 'red' ? 'red' : 'yellow'}"></div>
       <div><div class="title">${esc(c.title)} ${srcChip}</div>
         ${c.detail ? `<div class="small" style="margin-top:2px">${esc(c.detail)}</div>` : ''}
         ${c.quote ? `<div class="small muted" style="margin-top:2px">“${esc(c.quote)}”</div>` : ''}
-        ${rechecking && !ig ? '<div class="small muted" style="margin-top:6px"><span class="spinner"></span> Re-checking with your latest edits…</div>' : ig ? `<div class="small" style="margin-top:6px">Ignored — <i>${esc(ig.reason)}</i> ${ro ? '' : '<a href="#" data-undo>Undo</a>'}</div>`
+        ${ig ? `<div class="small" style="margin-top:6px">Ignored — <i>${esc(ig.reason)}</i> ${ro ? '' : '<a href="#" data-undo>Undo</a>'}</div>`
           : ro ? '' : `<div class="act">
             ${c.rerun ? '<button class="btn sm" data-rerun>Re-run AI check</button>' : c.focus ? '<button class="btn sm primary" data-fix>Fix →</button>' : ''}
             ${c.canIgnore ? '<button class="btn sm" data-ignore>Ignore…</button>' : '<span class="small muted">Must be fixed — vendors can\'t quote correctly without it.</span>'}
@@ -69,7 +75,6 @@ QP.screens = QP.screens || {};
         <h4>Questionnaire</h4><ol>${q.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol>
         ${t.length ? `<h4>Other terms</h4><ol>${t.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol>` : ''}
       </div>
-      <div class="small muted" style="margin-top:8px">🔒 Not included: last year's prices and suppliers (kept as your private baseline)${D.dropped.length ? ` and the ${D.dropped.length} dropped item${D.dropped.length > 1 ? 's' : ''}` : ''}.</div>
     </div>`;
   }
 
@@ -122,15 +127,16 @@ QP.screens = QP.screens || {};
         <div class="aiwhat">Reads the RFx the way a vendor would and looks for contradictions, the wrong year or period, items you asked to drop that are still there, and old supplier names or contract numbers. It runs again by itself after you edit.</div></div></div>
         <div class="small" style="margin-top:8px">${aiStatus}</div></div></div>
       <div class="card"><div class="ch"><h3>Checks before sending</h3><span class="grow"></span><span class="small muted">${D.lines.length} lines · ${D.questionnaire.filter(q => q.status === 'accepted').length} questions</span></div>
-        ${sorted.length ? sorted.map(c => checkRow(c, D, false)).join('') : '<div class="cb tile-ok">✓ Everything checks out.</div>'}
+        ${sorted.map(c => checkRow(c, D, false)).join('')}
+        ${job ? `<div class="flag"><div><span class="spinner"></span></div><div><div class="title">AI check is reading your latest version…</div><div class="small muted" style="margin-top:2px">Its findings will appear here in a few seconds.</div></div></div>` : !sorted.length ? '<div class="cb tile-ok">✓ Everything checks out.</div>' : ''}
         ${ignored.length ? `<div class="cb small muted" style="border-top:1px solid var(--line)">Ignored (saved with the send record):</div>${ignored.map(c => checkRow(c, D, false)).join('')}` : ''}
       </div>
       <div class="card"><div class="ch"><h3>Send</h3></div><div class="cb">
         <div class="kv small"><div class="k">Channel</div><div>✉ Email <span class="muted">(simulated — no real email leaves the app)</span></div>
-          <div class="k">Recipients</div><div>${QP.VENDORS.map(v => `${esc(v.name)} · ${esc(v.contact)} &lt;${esc(v.email)}&gt; <span class="pill ${v.status2026 === 'Incumbent' ? 'grey' : 'blue'}">${v.status2026 === 'Incumbent' ? 'current supplier' : 'new'}</span>`).join('<br>')}</div></div>
+          <div class="k">Recipients</div><div><div class="muted" style="margin-bottom:4px">From your approved supplier list (vendor master). In this prototype the list is stored in the app; in a live system it would come from the ERP / supplier master.</div>${QP.VENDORS.map(v => `${esc(v.name)} · ${esc(v.contact)} &lt;${esc(v.email)}&gt; <span class="pill ${v.status2026 === 'Incumbent' ? 'grey' : 'blue'}">${v.status2026 === 'Incumbent' ? 'current supplier' : 'new'}</span>`).join('<br>')}</div></div>
         <div class="row" style="margin-top:10px"><button class="btn" data-preview>👁 Preview what vendors receive</button></div>
-        <div class="row" style="margin-top:14px"><button class="btn primary" id="sendBtn" ${red.length ? 'disabled' : ''}>Send RFx to ${QP.VENDORS.length} vendors</button>
-          ${red.length ? `<span class="small" style="color:var(--red)">Fix or ignore ${red.length} must-fix item${red.length > 1 ? 's' : ''} first.</span>` : yel.length ? `<span class="small muted">${yel.length} item${yel.length > 1 ? 's' : ''} worth a look — sending is allowed.</span>` : ''}</div>
+        <div class="row" style="margin-top:14px"><button class="btn primary" id="sendBtn" ${red.length || job ? 'disabled' : ''}>Send RFx to ${QP.VENDORS.length} vendors</button>
+          ${job ? '<span class="small muted">Waiting for the AI check to finish…</span>' : red.length ? `<span class="small" style="color:var(--red)">Fix or ignore ${red.length} must-fix item${red.length > 1 ? 's' : ''} first.</span>` : yel.length ? `<span class="small muted">${yel.length} item${yel.length > 1 ? 's' : ''} worth a look — sending is allowed.</span>` : ''}</div>
       </div></div>`;
 
     // actions on check rows
@@ -146,7 +152,7 @@ QP.screens = QP.screens || {};
         const f = row.querySelector('.actform'), inp = f.querySelector('input'), ok = f.querySelector('[data-ok]');
         inp.focus(); inp.oninput = () => { ok.disabled = !inp.value.trim(); };
         f.querySelector('[data-cx]').onclick = () => QP.render();
-        ok.onclick = () => { D.ignored[c.id] = { reason: inp.value.trim(), at: new Date().toISOString(), title: c.title, detail: c.detail, sev: c.sev, src: c.src }; QP.save(); QP.render(); };
+        ok.onclick = () => { D.ignored[c.id] = { reason: inp.value.trim(), at: new Date().toISOString(), title: c.title, detail: c.detail, sev: c.sev, src: c.src, category: c.category || null, whereKey: c.whereKey || null }; QP.save(); QP.render(); };
       };
     });
     main.querySelector('[data-preview]').onclick = () => QP.modal('What each vendor receives', vendorCopy(D), { width: 1100 });

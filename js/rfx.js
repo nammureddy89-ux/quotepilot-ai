@@ -290,7 +290,7 @@ Hard rules:
     const seen = {};
     D.lines.forEach(L => {
       const k = [norm(L.desc), L.ply, String(L.size).replace(/\s/g, ''), L.plant, norm(L.printing)].join('|');
-      if (seen[k]) add('dup-' + L.key, 'yellow', 'Possible duplicate line', `Line ${L.line} looks the same as line ${seen[k].line} (description, ply, size, printing and plant).`, `line-${L.key}-desc`);
+      if (seen[k]) { add('dup-' + L.key, 'red', 'Duplicate line', `Line ${L.line} is the same as line ${seen[k].line} (description, ply, size, printing and plant). Change a value or remove it.`, `line-${L.key}-desc`); out[out.length - 1].dupOf = seen[k].line; }
       else seen[k] = L;
     });
     // AI skipped rows of the file / dropped item still present
@@ -337,10 +337,14 @@ Hard rules:
   const CHECK_SYSTEM = `You review a procurement RFx just before it is sent to vendors. Find real problems a careful buyer would want fixed:
 - contradictions (e.g. price basis says "landed at plant" but a term or question asks for ex-works prices; validity or payment days stated differently in two places),
 - wrong year or contract period (text that still refers to last year's period or contract),
-- items the brief asked to drop that are still present, or items the brief asked to add that are missing,
+- items the brief asked to ADD that are missing,
 - references to old or current suppliers, old contract numbers, or last year's prices,
 - questions or terms that are unclear to a vendor or ask for something already fixed elsewhere.
-Do NOT report blank fields, missing weights, date order or format issues — plain checks already cover those. Do NOT invent problems; an empty list is a good answer.
+Do NOT report blank fields, missing weights, date order or format issues — plain checks already cover those.
+Do NOT report dropped items: plain checks handle them, and items the buyer restored were kept on purpose.
+Line numbers written in the brief refer to LAST YEAR'S contract, not to this RFx. Always refer to an item by its current RFx line number and its name.
+Do NOT repeat points the buyer has already reviewed and ignored (listed in the private context), even in other words.
+Do NOT invent problems; an empty list is a good answer.
 Each finding must quote the exact text it is about (max 15 words). Output JSON only.`;
   const CHECK_SCHEMA = `Return JSON: { "findings": [ { "severity": "red"|"yellow", "category": "contradiction"|"wrong_year"|"dropped_item"|"missing_item"|"old_reference"|"price_leak"|"unclear", "title": string (max 8 words), "detail": string (one plain sentence), "where": { "type": "contract"|"scope"|"line"|"question"|"term", "line": number|null, "index": number|null }, "quote": string } ] }
 "red" = would mislead vendors or break the comparison; "yellow" = worth a look. For questions and terms, "index" is the 1-based number shown.`;
@@ -375,7 +379,7 @@ ${t.map((x, i) => `${i + 1}. ${x.text}`).join('\n') || '(none)'}`;
     const old = [...new Set(D.lines.concat(D.dropped || []).map(L => L.supplier2026).filter(Boolean))];
     const parts = [
       { type: 'text', text: `--- BUYER'S BRIEF ---\n${D.brief || '(no brief)'}` },
-      { type: 'text', text: `--- PRIVATE CONTEXT (never shown to vendors) ---\nLast year's suppliers: ${old.join(', ') || 'unknown'}.\nItems dropped on the brief's instruction: ${(D.dropped || []).map(x => x.desc).join(', ') || 'none'}.\nToday: ${QP.todayISO()}.` },
+      { type: 'text', text: `--- PRIVATE CONTEXT (never shown to vendors) ---\nLast year's suppliers: ${old.join(', ') || 'unknown'}.\nItems dropped on the brief's instruction: ${(D.dropped || []).map(x => x.desc).join(', ') || 'none'}.\nItems the buyer restored on purpose (keep them, do not report): ${(D.restored || []).map(x => x.desc).join(', ') || 'none'}.\nPoints the buyer reviewed and ignored (do not report again): ${Object.values(D.ignored || {}).filter(x => x.src === 'ai').map(x => `"${x.title}" — ${x.detail}`).join(' | ') || 'none'}.\nToday: ${QP.todayISO()}.` },
       { type: 'text', text: `--- RFx AS VENDORS WILL RECEIVE IT ---\n${QP.vendorCopyText(D)}` },
       { type: 'text', text: CHECK_SCHEMA }
     ];
@@ -387,7 +391,8 @@ ${t.map((x, i) => `${i + 1}. ${x.text}`).join('\n') || '(none)'}`;
       else if (w.type === 'question') focus = 'questionnaire';
       else if (w.type === 'term') focus = 'terms';
       else if (w.type === 'contract') focus = 'meta-title';
-      return { id: 'ai-' + i, sev: f.severity === 'red' ? 'red' : 'yellow', title: f.title || 'AI finding', detail: f.detail || '', quote: f.quote || '', focus, canIgnore: true, src: 'ai', category: f.category };
+      return { id: 'ai-' + i, sev: f.severity === 'red' ? 'red' : 'yellow', title: f.title || 'AI finding', detail: f.detail || '', quote: f.quote || '', focus, canIgnore: true, src: 'ai', category: f.category,
+        whereKey: `${w.type || ''}:${w.line || w.index || ''}` };
     });
     return { findings, model, timing, rev: D.rev, at: new Date().toISOString() };
   };

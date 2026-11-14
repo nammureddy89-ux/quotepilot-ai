@@ -140,8 +140,10 @@ QP.screens = QP.screens || {};
         <div style="overflow:auto;max-height:62vh"><table class="t edit"><thead><tr><th>#</th><th>Description</th><th>Product use</th><th>Ply</th><th>Board</th><th>Size L×W×H mm</th><th>Weight g</th><th>Printing</th><th>Plant</th><th class="num">Annual qty</th><th>Source</th><th></th></tr></thead><tbody>
         ${D.lines.map(L => {
           const inp = (k, w, type = 'text') => `<input ${dis} data-l="${L.key}" data-k="${k}" data-focus="line-${L.key}-${k}" type="${type}" style="width:${w}px" value="${esc(L[k])}" class="${mark('line-' + L.key + '-' + k)}">`;
+          const dup = checks.find(c => c.id === 'dup-' + L.key && !D.ignored[c.id]);
+          const dupNote = dup ? `<div class="small" style="color:var(--red);margin-top:2px">● Same as line ${dup.dupOf} — change a value or remove it</div>` : '';
           const chg = (L.changed || []).length ? `<div class="small" style="color:var(--brand)" title="${esc(L.changed.map(c => c.quote).join(' / '))}">changed per brief</div>` : '';
-          return `<tr><td title="Item code ${esc(L.code || '—')}">${L.line}</td><td>${inp('desc', 150)}${chg}</td><td>${inp('use', 105)}</td><td>${inp('ply', 40, 'number')}</td><td>${inp('board', 125)}</td><td>${inp('size', 100)}</td><td>${inp('weightG', 56, 'number')}</td><td>${inp('printing', 92)}</td>
+          return `<tr><td title="Item code ${esc(L.code || '—')}">${L.line}</td><td>${inp('desc', 150)}${chg}${dupNote}</td><td>${inp('use', 105)}</td><td>${inp('ply', 40, 'number')}</td><td>${inp('board', 125)}</td><td>${inp('size', 100)}</td><td>${inp('weightG', 56, 'number')}</td><td>${inp('printing', 92)}</td>
             <td><select ${dis} data-l="${L.key}" data-k="plant" data-focus="line-${L.key}-plant" class="${mark('line-' + L.key + '-plant')}"><option value="">— choose —</option>${QP.COMPANY.plants.concat(L.plant && !QP.COMPANY.plants.includes(L.plant) ? [L.plant] : []).map(p => `<option ${p === L.plant ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></td>
             <td class="num">${inp('qty', 84, 'number')}</td><td>${(ORIGIN[L.origin] || ORIGIN.manual)(L)}</td>
             <td style="white-space:nowrap">${ro ? '' : `<button class="icon-btn" data-dupline="${L.key}" title="Duplicate this line">⧉</button><button class="icon-btn" data-delline="${L.key}" title="Remove line">✕</button>`}</td></tr>`;
@@ -214,6 +216,7 @@ QP.screens = QP.screens || {};
       e.preventDefault();
       const x = D.dropped.find(d => d.srcRow === Number(a.dataset.restore));
       D.dropped = D.dropped.filter(d => d !== x);
+      D.restored = (D.restored || []).concat({ desc: x.desc, srcRow: x.srcRow, at: new Date().toISOString() });
       const key = 'r' + x.srcRow;
       const L = x.line ? Object.assign({}, x.line, { key }) : { key, origin: 'upload', srcRow: x.srcRow, code: '', desc: x.desc, use: '', ply: '', board: '', size: '', weightG: '', printing: '', plant: '', qty: '', lastYear: x.lastYear, supplier2026: x.supplier2026, verify: [], changed: [] };
       // put it back in file order
