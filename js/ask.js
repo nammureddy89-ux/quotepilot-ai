@@ -339,7 +339,7 @@ NOT AVAILABLE: vendors' own past prices, vendor financials, market prices, anyth
   K.ask = async function (question, history, { signal, onStatus } = {}) {
     const m = QP.model, t0 = Date.now();
     onStatus && onStatus('AI is planning the steps…');
-    const p = await QP.callAI({ system: K.PLAN_SYSTEM, parts: [{ type: 'text', text: planContext(m, history) + `\n\nBUYER'S QUESTION: ${question}\n\n` + K.PLAN_SCHEMA }], json: true, maxTokens: 2048, signal, onStatus });
+    const p = await QP.callAI({ system: K.PLAN_SYSTEM, parts: [{ type: 'text', text: planContext(m, history) + `\n\nBUYER'S QUESTION: ${question}\n\n` + K.PLAN_SCHEMA }], json: true, maxTokens: 4096, thinking: 'low', signal, onStatus });
     const plan = p.data || {};
     const turn = { q: question, plan, at: new Date().toISOString(), models: [p.model], timing: {} };
     if (plan.cannot && plan.cannot.reason && !(plan.steps || []).length) { turn.clarify = { question: plan.cannot.reason, options: plan.cannot.options || [] }; turn.cannot = true; turn.timing.totalMs = Date.now() - t0; return turn; }
@@ -348,10 +348,10 @@ NOT AVAILABLE: vendors' own past prices, vendor financials, market prices, anyth
     onStatus && onStatus('Code is computing on the live data…');
     turn.results = K.run(plan);
     const facts = turn.results.map((r, i) => `RESULT ${i + 1} — ${r.title}\n${r.error ? 'ERROR: ' + r.error : (r.facts || []).join('\n')}${r.notes && r.notes.length ? '\nNotes: ' + r.notes.join(' ') : ''}`).join('\n\n');
-    turn.codeSummary = turn.results.map(r => r.error ? r.error : r.summary || `${r.title}: see the table below.`).join(' ');
+    turn.codeSummary = turn.results.map(r => r.error ? r.error : (r.rows && !r.rows.length) ? `${r.title}: ${(r.notes || []).join(' ') || 'nothing matched.'}` : r.summary || `${r.title}: see the table below.`).join(' ');
     onStatus && onStatus('AI is writing the answer…');
     try {
-      const w = await QP.callAI({ system: K.WRITE_SYSTEM, parts: [{ type: 'text', text: `BUYER'S QUESTION: ${question}\nPLAN: ${plan.understood || ''}\n\nCOMPUTED RESULTS (the only source of numbers):\n${facts}` }], json: true, maxTokens: 1024, signal, onStatus });
+      const w = await QP.callAI({ system: K.WRITE_SYSTEM, parts: [{ type: 'text', text: `BUYER'S QUESTION: ${question}\nPLAN: ${plan.understood || ''}\n\nCOMPUTED RESULTS (the only source of numbers):\n${facts}` }], json: true, maxTokens: 4096, thinking: 'low', signal, onStatus });
       turn.models.push(w.model);
       const ans = (w.data && w.data.answer) || '';
       const cav = ((w.data && w.data.caveats) || []).slice(0, 3);

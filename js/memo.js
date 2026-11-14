@@ -53,6 +53,7 @@ Rules: no markdown symbols (no **, no #); use "•" for bullets; leave out anyth
       `Buyer's reasons: ${a.reason}`,
       `Risks: ${[...a.risks.filter(r => r.sev !== 'info').map(r => r.text), ...pay.map(t => t + (a.payImpact > 0 ? ` (about ${L(Math.abs(a.payImpact))} a year in working capital)` : ''))].join('; ') || 'none'}.`,
       a.riskPlan ? `Buyer's plan for managing the risks: ${a.riskPlan}` : 'Buyer has not stated how the risks are managed.',
+      a.uncovered && a.uncovered.length ? `Items not covered by this award: line ${a.uncovered.join(', ')}.${a.uncoveredPlan ? ` Buyer's plan: ${a.uncoveredPlan}` : ''}` : '',
       a.overrideReason ? `Open issues accepted: ${a.openRed.map(f => f.vendor + ' — ' + f.title).join('; ')}. Buyer's reason: ${a.overrideReason}` : '',
       `Vendors not selected: ${notSel.join(' ') || 'none'}`
     ].filter(Boolean).join('\n');

@@ -6,6 +6,18 @@ QP.screens = QP.screens || {};
 (function () {
   const esc = s => QP.esc(s);
   let busy = null;   // { ctrl, q, status }
+  // Plain-language version of the vendor filters the AI chose (instead of showing raw JSON).
+  function filterWords(steps) {
+    const f = ((steps || []).find(st => st && st.vendors) || {}).vendors || {};
+    const w = [];
+    if (f.qualified_only) w.push('passed all must-pass checks');
+    if (f.quoted_all_items) w.push('quoted every item');
+    if (f.iso_valid_through_contract) w.push('ISO certificate valid for the whole contract');
+    if (f.min_on_time_pct != null) w.push(`on-time delivery at least ${f.min_on_time_pct}%`);
+    if (f.max_rejection_pct != null) w.push(`rejections at most ${f.max_rejection_pct}%`);
+    if (Array.isArray(f.exclude) && f.exclude.length) w.push('some vendors excluded as you asked');
+    return w.length ? ', keeping only vendors that ' + w.join(', ') : '';
+  }
   // Suggested questions are built from the live RFx and replies (only the question text; answers are always computed).
   function suggestions(m) {
     const R = QP.state.rfx, out = [];
@@ -94,7 +106,7 @@ QP.screens = QP.screens || {};
       ${caveats.length ? `<div class="cav"><b>Caveats</b><ul>${caveats.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
       <details class="small" style="margin-top:8px"><summary style="cursor:pointer;color:#475467">Method — how this was worked out</summary>
         <ol style="margin:6px 0;padding-left:18px">
-          <li>The AI turned your question into ${(t.plan.steps || []).length} step${(t.plan.steps || []).length === 1 ? '' : 's'} from a fixed list (it never sees prices): <code>${esc(JSON.stringify(t.plan.steps))}</code></li>
+          <li>The AI turned your question into ${(t.plan.steps || []).length} calculation${(t.plan.steps || []).length === 1 ? '' : 's'} from a fixed list (it never sees prices)${filterWords(t.plan.steps)}.</li>
           ${(t.results || []).map(r => `<li>Plain code computed “${esc(r.title)}”: ${esc(r.method || r.error || '')}</li>`).join('')}
           <li>The AI wrote the answer from those results only; code checked every number.</li></ol></details>
       <div class="small muted" style="margin-top:6px">${when} · data as of this moment · ${QP.SHOW_TIMING && t.timing && t.timing.totalMs ? `answered in ${Math.round(t.timing.totalMs / 1000)} s · ` : ''}<span class="info" title="${esc((t.models || []).filter(Boolean).join(', '))}">AI model ⓘ</span></div>

@@ -14,14 +14,13 @@ QP.screens = QP.screens || {};
     const rules = QP.award.mustPassList();
     const vids = QP.VENDORS.map(v => v.id);
     const failed = vids.filter(id => q[id].processed && !q[id].pass);
-    return `<div class="card"><div class="ch"><h3>1 · Qualify</h3><span class="muted small">Plain rules on the answers the AI read. Untick a rule to stop it being must-pass (recorded with the award).</span></div>
+    return `<div class="card"><div class="ch"><h3>1 · Qualify</h3><span class="muted small">Each vendor is checked against these must-pass rules. Untick a rule if it shouldn’t be required — your change is saved with the award.</span></div>
       <div class="cb" style="padding:0"><div class="gridwrap" style="max-height:none;border:0"><table class="t">
       <thead><tr><th>Vendor</th>${rules.map(r => `<th><label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-must="${esc(r.id)}" ${r.on ? 'checked' : ''}><span>${esc(r.label)}<br><span style="font-weight:400">${r.on ? 'must-pass' : 'not must-pass'}</span></span></label></th>`).join('')}<th>Result</th></tr></thead>
       <tbody>${vids.map(id => { const x = q[id], V = QP.VENDORS.find(v => v.id === id);
         if (!x.processed) return `<tr><td><b>${esc(V.name)}</b></td><td colspan="${rules.length}" class="muted">Reply not read yet</td><td><span class="pill grey">Not in options</span></td></tr>`;
         return `<tr><td><b>${esc(V.name)}</b><div class="small muted">${V.status2026 === 'Incumbent' ? 'Current supplier' : 'New vendor'}</div></td>${x.results.map(r => `<td style="${r.rule.on ? '' : 'opacity:.5'}">${r.pass === true ? `<span class="pill green">✓ ${esc(r.text)}</span>` : r.pass === false ? `<span class="pill red">✗ ${esc(r.text)}</span>` : `<span class="pill grey">${esc(r.text)}</span>`}${r.note ? `<div class="small" style="color:var(--amber)">${esc(r.note)}</div>` : ''}${r.source ? ` <button class="icon-btn" title="View in original file" data-qsrc='${esc(JSON.stringify({ id, s: r.source }))}'>📍</button>` : ''}</td>`).join('')}
           <td>${x.pass ? '<span class="pill green">Qualifies</span>' : '<span class="pill red">Not awarded</span>'}</td></tr>`; }).join('')}</tbody></table></div>
-      ${failed.length ? `<div class="small" style="padding:10px 16px;border-top:1px solid var(--line);color:#475467">Not awarded: ${failed.map(id => `<b>${esc(QP.VENDORS.find(v => v.id === id).name)}</b> (${esc(q[id].failed.map(f => f.rule.label + ' — ' + f.text).join('; '))})`).join(' · ')}. They are left out of every option below. If a vendor sends the missing proof, read its new reply and it is checked again.</div>` : ''}
       </div></div>`;
   }
 
@@ -42,7 +41,7 @@ QP.screens = QP.screens || {};
         <tr class="tt"><td>= Total</td><td>${QP.fmtCr(e.total)}</td></tr>
         <tr><td class="muted">Payment terms impact</td><td class="muted">${e.payImpact ? `${e.payImpact > 0 ? '+' : '−'}${QP.fmtL(Math.abs(e.payImpact))}` : '—'}</td></tr>
       </table>
-      <div class="who">${per.map(p => `<div><b>${esc(p.name)}</b> <span class="muted">· ${p.lines.length} item${p.lines.length > 1 ? 's' : ''} (${QP.award.ranges(p.lines)})</span><div class="small muted">${QP.fmtCr(p.goods)}${p.freight.amount ? ` + freight ${QP.fmtL(p.freight.amount)}` : ''}${p.discount ? ` − ${QP.fmtL(p.discount)} discount` : ''}${p.paymentDays != null ? ` · pays in ${p.paymentDays} days` : ''}${p.capacity ? ` · ~${QP.fmt(p.monthly, 0)}/month of ${QP.fmt(p.capacity, 0)} capacity` : ''}</div></div>`).join('')}</div>
+      <div class="who">${per.map(p => `<div><b>${esc(p.name)}</b> <span class="muted">— ${p.lines.length} item${p.lines.length > 1 ? 's' : ''} (line${p.lines.length > 1 ? 's' : ''} ${QP.award.ranges(p.lines)})</span><div class="small muted">Items ${QP.fmtCr(p.goods)}${p.freight.amount ? ` · Freight +${QP.fmtL(p.freight.amount)}` : ''}${p.discount ? ` · Discount −${QP.fmtL(p.discount)}` : ''}</div>${p.paymentDays != null || p.capacity ? `<div class="small muted">${[p.paymentDays != null ? `Payment terms: ${p.paymentDays} days` : '', p.capacity ? `Needs ${Math.round(p.monthly / p.capacity * 100)}% of their capacity (${QP.fmt(p.monthly, 0)} of ${QP.fmt(p.capacity, 0)} boxes a month)` : ''].filter(Boolean).join(' · ')}</div>` : ''}</div>`).join('')}</div>
       <div class="risks">${risks.length ? risks.map(r => `<div>${dot(r.sev)}${esc(r.text)}</div>`).join('') : '<div class="muted">No risks found by the rules</div>'}
         ${e.openRed.length ? `<div>${dot('red')}<b>${e.openRed.length} must-resolve issue${e.openRed.length > 1 ? 's' : ''} still open</b> — needs your written reason</div>` : `<div class="tile-ok">✓ No open must-resolve issues on this option</div>`}
         ${e.assumptions.length ? `<div>${dot('yellow')}${e.assumptions.length} value${e.assumptions.length > 1 ? 's' : ''} not straight from a quote (corrected / last year's price / your freight estimate)</div>` : ''}</div>
@@ -61,7 +60,8 @@ QP.screens = QP.screens || {};
         <a href="#" data-goissues>Resolve them in Review Issues →</a> or award anyway with a reason:
         <textarea id="ovr" class="reasonbox" placeholder="Why are you awarding with these issues open?"></textarea></div>` : ''}
       ${e.incomplete ? `<div class="say err" style="margin:0 0 10px">The total is incomplete (freight amount unknown). Enter a freight estimate in Review Issues first.</div>` : ''}
-      ${e.uncovered.length ? `<div class="say err" style="margin:0 0 10px">${e.uncovered.length} item(s) are not covered by this option (line ${e.uncovered.join(', ')}).</div>` : ''}
+      ${e.uncovered.length ? `<div class="banner" style="background:var(--red-soft);border-color:#fecdca"><b>${e.uncovered.length} item${e.uncovered.length > 1 ? 's are' : ' is'} not covered by this option</b> (${QP.state.rfx.lines.filter(L => e.uncovered.includes(L.line)).map(L => `line ${L.line} · ${esc(L.desc)}`).join('; ')}). No qualifying vendor in this option priced ${e.uncovered.length > 1 ? 'them' : 'it'}. You can still award — say how ${e.uncovered.length > 1 ? 'these items' : 'this item'} will be bought:
+        <textarea id="uncov" class="reasonbox" placeholder="e.g. Line 25 will be bought from the current supplier under a short purchase order until a new quote comes in."></textarea></div>` : ''}
       <label class="small" style="color:#344054">Why this option? <span class="muted">(pick one or more, and/or write your own — saved in the award record and used in the note for your VP)</span></label>
       <div class="row" style="gap:6px;margin:6px 0">${REASONS.map(r => `<button type="button" class="chip" data-reason="${esc(r)}">${esc(r)}</button>`).join('')}</div>
       <textarea id="why" class="reasonbox" placeholder="In your own words (optional if you picked a reason above), e.g. Deccan has delivered on time for three years; keeping Shree Ganesh as a second supplier for the Sinnar plant."></textarea>
@@ -77,7 +77,7 @@ QP.screens = QP.screens || {};
   function snapshot(o, m, q, why, ovr) {
     const e = o.ev;
     return {
-      at: new Date().toISOString(), key: o.key, title: o.title, reason: why.text, reasonChips: why.chips, reasonText: why.own, riskPlan: why.riskPlan, overrideReason: ovr || null,
+      at: new Date().toISOString(), key: o.key, title: o.title, reason: why.text, reasonChips: why.chips, reasonText: why.own, riskPlan: why.riskPlan, uncoveredPlan: why.uncoveredPlan || '', overrideReason: ovr || null,
       total: e.total, goods: e.goods, freight: e.freight, discount: e.discount, gst: e.gst, payImpact: e.payImpact, payRate: e.payRate, covered: e.covered, uncovered: e.uncovered,
       vsLastYear: e.vsLastYear, risks: e.risks, assumptions: e.assumptions,
       per: Object.values(e.per).map(p => ({ id: p.id, name: p.name, lines: p.lines, goods: p.goods, freight: p.freight.amount, freightText: p.freight.text, discount: p.discount, total: p.total, paymentDays: p.paymentDays })),
@@ -105,6 +105,7 @@ QP.screens = QP.screens || {};
         <div class="kv" style="margin-top:14px">
           <div class="k">Reason</div><div>${esc(a.reason)}</div>
           ${a.riskPlan ? `<div class="k">How risks are managed</div><div>${esc(a.riskPlan)}</div>` : ''}
+          ${a.uncovered && a.uncovered.length ? `<div class="k">Not covered</div><div>Line ${a.uncovered.join(', ')}${a.uncoveredPlan ? `<br><i>${esc(a.uncoveredPlan)}</i>` : ''}</div>` : ''}
           ${a.overrideReason ? `<div class="k">Open issues accepted</div><div>${a.openRed.map(f => esc(f.vendor + ' — ' + f.title)).join('; ')}<br><i>${esc(a.overrideReason)}</i></div>` : ''}
           <div class="k">Other options</div><div>${a.otherOptions.map(x => `${esc(x.title)}: ${x.incomplete ? 'incomplete' : QP.fmtCr(x.total)}`).join(' · ') || '—'}</div>
           <div class="k">Qualification</div><div>${a.qualification.filter(x => x.processed).map(x => `${esc(x.name)}: ${x.pass ? '✓ qualifies' : '✗ ' + esc(x.why)}`).join('<br>')}</div>
@@ -118,7 +119,7 @@ QP.screens = QP.screens || {};
 
   function downloadRecord(a) {
     const wb = XLSX.utils.book_new();
-    const sum = [['Award record', QP.state.rfx.id + ' — ' + QP.state.rfx.title], ['Decided', a.at], ['Option', a.title], ['Landed total before GST (Rs)', Math.round(a.total)], ['Items', Math.round(a.goods)], ['Freight', Math.round(a.freight)], ['Discount', Math.round(a.discount)], ['Payment terms impact (separate)', Math.round(a.payImpact)], ['Reason', a.reason], ['Open issues accepted', a.overrideReason || ''], [],
+    const sum = [['Award record', QP.state.rfx.id + ' — ' + QP.state.rfx.title], ['Decided', a.at], ['Option', a.title], ['Landed total before GST (Rs)', Math.round(a.total)], ['Items', Math.round(a.goods)], ['Freight', Math.round(a.freight)], ['Discount', Math.round(a.discount)], ['Payment terms impact (separate)', Math.round(a.payImpact)], ['Reason', a.reason], ['Open issues accepted', a.overrideReason || ''], ['Items not covered', (a.uncovered || []).length ? 'Line ' + a.uncovered.join(', ') + (a.uncoveredPlan ? ' — ' + a.uncoveredPlan : '') : ''], [],
       ['Vendor', 'Items', 'Items value', 'Freight', 'Discount', 'Total', 'Payment days'], ...a.per.map(p => [p.name, p.lines.join(' '), Math.round(p.goods), Math.round(p.freight || 0), Math.round(p.discount), Math.round(p.total), p.paymentDays]),
       [], ['Risks'], ...a.risks.map(r => [r.text]), [], ['Qualification'], ...a.qualification.map(x => [x.name, x.processed ? (x.pass ? 'Qualifies' : 'Not awarded: ' + x.why) : 'Not read'])];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), 'Award');
@@ -142,14 +143,14 @@ QP.screens = QP.screens || {};
     if (picked && !opts.find(o => o.key === picked)) picked = null;
     const pendingVendors = QP.VENDORS.filter(V => !m.vendors[V.id].processed).map(V => V.name);
     main.innerHTML = `
-      <div class="head"><div><h1>Award</h1><p>Qualify vendors on the must-pass answers, compare whole award options on <b>true cost</b> (prices + freight for the volume each vendor gets − discounts only when the option meets the condition), then record your decision and reason.</p></div></div>
+      <div class="head"><div><h1>Award</h1><p>See which vendors qualify, compare the ways to place the order on <b>full cost</b> (price + freight − discounts), and record your decision.</p></div></div>
       ${a ? recordCard(a) : ''}
       ${pendingVendors.length ? `<div class="say info" style="margin:0 0 12px">Not read yet: ${esc(pendingVendors.join(', '))}. Options below use the replies read so far.</div>` : ''}
       ${qualifyCard(m, q)}
       <div class="card"><div class="ch"><h3>2 · Award options</h3><span class="muted small">Only vendors that qualify · before GST · items only the vendor priced (your estimates are never awarded)</span><span class="grow"></span>
         <label class="small muted">Payment terms impact at <input id="payRate" type="number" min="0" max="30" step="0.5" value="${QP.fmt(prefs().payRate * 100, 1).replace(/\.0$/, '')}" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:3px 6px"> % a year</label></div>
         <div class="cb">${opts.length ? `<div class="opts">${opts.filter(o => !o.alt).map(o => optionCard(o, m)).join('')}</div>
-          ${opts.some(o => o.alt) ? `<div class="small muted" style="margin:16px 0 8px"><b style="color:#344054">Award everything to a different vendor</b> — every other vendor that qualifies, on the same true-cost basis:</div><div class="opts">${opts.filter(o => o.alt).map(o => optionCard(o, m)).join('')}</div>` : ''}` : '<div class="empty">No vendor qualifies, so there is nothing to award. The table above shows which rule each vendor failed.</div>'}</div></div>
+          ${opts.some(o => o.alt) ? `<details style="margin-top:16px" ${opts.some(o => o.alt && (o.key === picked || (a && a.key === o.key))) ? 'open' : ''}><summary class="small" style="cursor:pointer;color:var(--brand)"><b>Show ${opts.filter(o => o.alt).length} more option${opts.filter(o => o.alt).length > 1 ? 's' : ''}</b> — award everything to another qualifying vendor</summary><div class="opts" style="margin-top:8px">${opts.filter(o => o.alt).map(o => optionCard(o, m)).join('')}</div></details>` : ''}` : '<div class="empty">No vendor qualifies, so there is nothing to award. The table above shows which rule each vendor failed.</div>'}</div></div>
       ${!a && picked ? decideCard(opts.find(o => o.key === picked)) : ''}`;
 
     main.querySelectorAll('[data-must]').forEach(cb => cb.onchange = () => {
@@ -165,18 +166,18 @@ QP.screens = QP.screens || {};
     const btn = main.querySelector('#confirmAward');
     if (btn) {
       const o = opts.find(x => x.key === picked);
-      const why = main.querySelector('#why'), ovr = main.querySelector('#ovr'), hint = main.querySelector('#whyHint'), rp = main.querySelector('#riskPlan');
+      const why = main.querySelector('#why'), ovr = main.querySelector('#ovr'), uncov = main.querySelector('#uncov'), hint = main.querySelector('#whyHint'), rp = main.querySelector('#riskPlan');
       const chips = new Set();
       const ownOk = () => { const t = why.value.trim(); return t.length >= 15 && !TRIVIAL.test(t); };
       const ok = () => {
         const t = why.value.trim();
         const reasonOk = chips.size > 0 ? (!t || !TRIVIAL.test(t)) : ownOk();
         hint.textContent = t && (TRIVIAL.test(t) || (!chips.size && t.length < 15)) ? 'Please give a real reason your VP can rely on (pick one above, or write at least a short sentence).' : '';
-        btn.disabled = !(reasonOk && (!ovr || ovr.value.trim().length > 2) && !o.ev.incomplete && !o.ev.uncovered.length); };
+        btn.disabled = !(reasonOk && (!ovr || ovr.value.trim().length > 2) && !o.ev.incomplete && (!uncov || uncov.value.trim().length > 2)); };
       main.querySelectorAll('[data-reason]').forEach(c => c.onclick = () => { const r = c.dataset.reason; if (chips.has(r)) chips.delete(r); else chips.add(r); c.classList.toggle('on', chips.has(r)); ok(); });
-      why.oninput = ok; if (ovr) ovr.oninput = ok;
+      why.oninput = ok; if (ovr) ovr.oninput = ok; if (uncov) uncov.oninput = ok;
       btn.onclick = () => { const own = why.value.trim(), list = [...chips];
-        const W = { chips: list, own, riskPlan: rp.value.trim(), text: [list.join('; '), own].filter(Boolean).join('. ') };
+        const W = { chips: list, own, riskPlan: rp.value.trim(), uncoveredPlan: uncov ? uncov.value.trim() : '', text: [list.join('; '), own].filter(Boolean).join('. ') };
         QP.state.award = snapshot(o, m, q, W, ovr ? ovr.value.trim() : null); QP.save(); picked = null; recordOpen = true; QP.flash = { text: 'Award recorded.', kind: 'ok' }; QP.render(); window.scrollTo(0, 0); };
     }
     if (a) {
