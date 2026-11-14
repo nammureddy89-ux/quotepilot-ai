@@ -10,7 +10,6 @@ QP.screens = QP.screens || {};
   function allChecks(D) {
     const rule = QP.rfxChecks(D);
     const ai = (D.aiCheck && D.aiCheck.findings || []).map(f => Object.assign({}, f, { id: aiId(f) }));
-    if (D.aiCheck && D.aiCheck.rev !== D.rev) rule.push({ id: 'aistale-' + D.rev, sev: 'yellow', title: 'AI check is out of date', detail: 'You edited the RFx after the AI check. Re-run it to read the latest version.', focus: null, canIgnore: true, src: 'rule', rerun: true });
     return rule.concat(ai);
   }
 
@@ -23,20 +22,21 @@ QP.screens = QP.screens || {};
       res.timing = Object.assign({}, res.timing, { totalMs: Date.now() - QP.rfxCheckJob.started });
       D.aiCheck = res; D.aiCheckError = null;
     } catch (e) {
-      D.aiCheckError = e.cancelled ? 'Cancelled.' : e.message;
+      D.aiCheckError = e.cancelled ? 'Cancelled.' : e.message; D.aiCheckErrorRev = D.rev;
     }
     QP.rfxCheckJob = null; QP.save(); QP.render();
   };
 
   function checkRow(c, D, ro) {
     const ig = D.ignored[c.id];
+    const rechecking = c.src === 'ai' && QP.rfxCheckJob;
     const srcChip = c.src === 'ai' ? '<span class="o ai">AI check</span>' : '<span class="o">Plain check</span>';
     return `<div class="flag ${ig ? 'done' : ''}" data-cid="${esc(c.id)}">
       <div class="dot ${c.sev === 'red' ? 'red' : 'yellow'}"></div>
       <div><div class="title">${esc(c.title)} ${srcChip}</div>
         ${c.detail ? `<div class="small" style="margin-top:2px">${esc(c.detail)}</div>` : ''}
         ${c.quote ? `<div class="small muted" style="margin-top:2px">“${esc(c.quote)}”</div>` : ''}
-        ${ig ? `<div class="small" style="margin-top:6px">Ignored — <i>${esc(ig.reason)}</i> ${ro ? '' : '<a href="#" data-undo>Undo</a>'}</div>`
+        ${rechecking && !ig ? '<div class="small muted" style="margin-top:6px"><span class="spinner"></span> Re-checking with your latest edits…</div>' : ig ? `<div class="small" style="margin-top:6px">Ignored — <i>${esc(ig.reason)}</i> ${ro ? '' : '<a href="#" data-undo>Undo</a>'}</div>`
           : ro ? '' : `<div class="act">
             ${c.rerun ? '<button class="btn sm" data-rerun>Re-run AI check</button>' : c.focus ? '<button class="btn sm primary" data-fix>Fix →</button>' : ''}
             ${c.canIgnore ? '<button class="btn sm" data-ignore>Ignore…</button>' : '<span class="small muted">Must be fixed — vendors can\'t quote correctly without it.</span>'}
@@ -94,7 +94,9 @@ QP.screens = QP.screens || {};
       main.innerHTML = `<div class="head"><div><h1>Review &amp; Send</h1><p>Create the RFx first.</p></div></div><div class="card"><div class="cb empty"><button class="btn primary" onclick="QP.go('create')">Create RFx →</button></div></div>`;
       return;
     }
-    if (!D.aiCheck && !QP.rfxCheckJob && !D.aiCheckError && D.lines.length) setTimeout(QP.runRfxAiCheck, 0);   // first visit: read it once automatically
+    // Read automatically on first visit, and again whenever the RFx changed since the last check.
+    const stale = !D.aiCheck || D.aiCheck.rev !== D.rev;
+    if (stale && !QP.rfxCheckJob && D.aiCheckErrorRev !== D.rev && D.lines.length) setTimeout(QP.runRfxAiCheck, 0);
 
     const checks = allChecks(D);
     const open = checks.filter(c => !D.ignored[c.id]);
@@ -102,8 +104,9 @@ QP.screens = QP.screens || {};
     const ignored = checks.filter(c => D.ignored[c.id]);
     const job = QP.rfxCheckJob, A = D.aiCheck;
     const aiStatus = job ? `<span class="spinner"></span> <span id="aiChkStatus">${esc(job.status)}</span> <a href="#" class="stoplink" data-aicancel>Cancel</a>`
-      : D.aiCheckError ? `<span style="color:var(--red)">${esc(D.aiCheckError)}</span> <button class="btn sm" data-rerun>Try again</button>`
-      : A ? `${A.findings.length ? `${A.findings.length} finding${A.findings.length > 1 ? 's' : ''} (in the list below)` : '✓ No problems found'}${A.rev !== D.rev ? ' · <b>out of date</b>' : ''} <span class="info" title="Model: ${esc(A.model || '')}${A.timing && A.timing.totalMs && QP.SHOW_TIMING ? ' · ' + QP.fmtDur(A.timing.totalMs) : ''}">ⓘ</span> <button class="btn sm" data-rerun>Re-run</button>`
+      : D.aiCheckError && D.aiCheckErrorRev === D.rev ? `<span style="color:var(--red)">${esc(D.aiCheckError)}</span> <button class="btn sm" data-rerun>Try again</button>`
+      : A ? `${A.findings.length ? `<b>${A.findings.length} finding${A.findings.length > 1 ? 's' : ''}</b> — in the list below, marked “AI check”` : '<span style="color:var(--green)">✓ No problems found</span>'}
+          ${A.timing && A.timing.totalMs ? `<span class="muted"> · checked in ${QP.fmtDur(A.timing.totalMs) || '1 s'}</span>` : ''} <span class="info" title="Model: ${esc(A.model || '')}">ⓘ</span> <button class="btn sm" data-rerun style="margin-left:8px">Run again</button>`
       : '<button class="btn sm" data-rerun>Run AI check</button>';
     const sorted = [...red, ...yel];
 
@@ -114,16 +117,18 @@ QP.screens = QP.screens || {};
         <div class="kpi"><div class="l">Must fix</div><div class="v" style="color:${red.length ? 'var(--red)' : 'var(--green)'}">${red.length || '✓ 0'}</div></div>
         <div class="kpi"><div class="l">Worth a look</div><div class="v" style="color:${yel.length ? 'var(--amber)' : '#98a2b3'}">${yel.length}</div></div>
         <div class="kpi"><div class="l">Ignored with a reason</div><div class="v">${ignored.length}</div></div>
-        <div class="kpi"><div class="l">AI check</div><div class="cnt" style="font-size:13px;margin-top:4px">${aiStatus}</div></div>
       </div>
+      <div class="card"><div class="cb"><div class="row" style="align-items:flex-start"><div style="flex:1"><b>✨ AI check</b>
+        <div class="aiwhat">Reads the RFx the way a vendor would and looks for contradictions, the wrong year or period, items you asked to drop that are still there, and old supplier names or contract numbers. It runs again by itself after you edit.</div></div></div>
+        <div class="small" style="margin-top:8px">${aiStatus}</div></div></div>
       <div class="card"><div class="ch"><h3>Checks before sending</h3><span class="grow"></span><span class="small muted">${D.lines.length} lines · ${D.questionnaire.filter(q => q.status === 'accepted').length} questions</span></div>
         ${sorted.length ? sorted.map(c => checkRow(c, D, false)).join('') : '<div class="cb tile-ok">✓ Everything checks out.</div>'}
         ${ignored.length ? `<div class="cb small muted" style="border-top:1px solid var(--line)">Ignored (saved with the send record):</div>${ignored.map(c => checkRow(c, D, false)).join('')}` : ''}
       </div>
-      <details class="card"><summary class="ch"><h3>Preview: what vendors receive</h3><span class="grow"></span><span class="small muted">click to open</span></summary><div class="cb">${vendorCopy(D)}</div></details>
       <div class="card"><div class="ch"><h3>Send</h3></div><div class="cb">
         <div class="kv small"><div class="k">Channel</div><div>✉ Email <span class="muted">(simulated — no real email leaves the app)</span></div>
           <div class="k">Recipients</div><div>${QP.VENDORS.map(v => `${esc(v.name)} · ${esc(v.contact)} &lt;${esc(v.email)}&gt; <span class="pill ${v.status2026 === 'Incumbent' ? 'grey' : 'blue'}">${v.status2026 === 'Incumbent' ? 'current supplier' : 'new'}</span>`).join('<br>')}</div></div>
+        <div class="row" style="margin-top:10px"><button class="btn" data-preview>👁 Preview what vendors receive</button></div>
         <div class="row" style="margin-top:14px"><button class="btn primary" id="sendBtn" ${red.length ? 'disabled' : ''}>Send RFx to ${QP.VENDORS.length} vendors</button>
           ${red.length ? `<span class="small" style="color:var(--red)">Fix or ignore ${red.length} must-fix item${red.length > 1 ? 's' : ''} first.</span>` : yel.length ? `<span class="small muted">${yel.length} item${yel.length > 1 ? 's' : ''} worth a look — sending is allowed.</span>` : ''}</div>
       </div></div>`;
@@ -144,11 +149,12 @@ QP.screens = QP.screens || {};
         ok.onclick = () => { D.ignored[c.id] = { reason: inp.value.trim(), at: new Date().toISOString(), title: c.title, detail: c.detail, sev: c.sev, src: c.src }; QP.save(); QP.render(); };
       };
     });
+    main.querySelector('[data-preview]').onclick = () => QP.modal('What each vendor receives', vendorCopy(D), { width: 1100 });
     main.querySelectorAll('[data-rerun]').forEach(b => b.onclick = () => QP.runRfxAiCheck());
     const ac = main.querySelector('[data-aicancel]'); if (ac) ac.onclick = e => { e.preventDefault(); QP.rfxCheckJob && QP.rfxCheckJob.ctrl.abort(); };
 
     main.querySelector('#sendBtn').onclick = async () => {
-      if (!await QP.confirmBox('Send the RFx?', `RFx ${esc(D.meta.id)} goes to ${QP.VENDORS.length} vendors by email (simulated). After sending, this version is locked so every quote is judged against the same RFx.`, 'Send to vendors')) return;
+      if (!await QP.confirmBox('Send the RFx?', `RFx ${esc(D.meta.id)} will be emailed to ${QP.VENDORS.length} vendors (simulated in this prototype). After sending you can't edit it. Every quote is compared against this exact version.`, 'Send to vendors')) return;
       if (QP.rfxCheckJob) QP.rfxCheckJob.ctrl.abort();
       const ignoredList = Object.values(D.ignored);
       QP.state.rfx = QP.buildSentRfx(D);

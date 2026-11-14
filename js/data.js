@@ -19,6 +19,8 @@ QP.COMPANY = {
   standardPaymentDays: 60
 };
 
+QP.COMPANY_DEFAULT = JSON.parse(JSON.stringify(QP.COMPANY));   // edits (Company profile → Edit) are stored in QP.state.company
+
 // Stage 1 demo inputs (Priya's own material). The AI structures these; nothing below is an AI answer.
 QP.SAMPLE_CONTRACT_FILE = 'samples/rfx/Sahyadri_Box_Contract_2026.xlsx';
 QP.SAMPLE_BRIEF = `Renewing our box contract for 1 Jan 2027 to 31 Dec 2027. Use last year's contract (attached) as the base.

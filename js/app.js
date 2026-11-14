@@ -31,6 +31,7 @@ window.QP = window.QP || {};
     if (QP._lastScreen && QP._lastScreen !== current()) QP.closeAllModals();
     QP._lastScreen = current();
     const cur = current();
+    Object.assign(QP.COMPANY, JSON.parse(JSON.stringify(QP.COMPANY_DEFAULT)), QP.state.company || {});
     let issuesOpen = 0;
     if (QP.state.rfxSent) try { const m = QP.compute(); issuesOpen = m.flags.filter(f => f.open && f.sev === 'red').length; QP.model = m; } catch (e) { console.error(e); }
     const sent = QP.state.rfxSent;

@@ -262,7 +262,7 @@ QP.busy = QP.busy || {};
       <div class="kpis">
         <div class="kpi"><div class="l">Replies received</div><div class="v">${received} / 5</div></div>
         <div class="kpi"><div class="l">Read by AI</div><div class="v">${processed} / 5</div></div>
-        <div class="kpi"><div class="l">Quotes due</div><div class="v">23 Nov 2026</div></div>
+        <div class="kpi"><div class="l">Quotes due</div><div class="v">${QP.fmtDate(QP.state.rfx.dueDate)}</div></div>
         <div class="kpi"><div class="l">RFx lines</div><div class="v">${QP.state.rfx.lines.length}</div></div>
       </div>
       <div class="card">${QP.VENDORS.map(V => {

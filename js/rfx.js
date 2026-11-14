@@ -85,7 +85,7 @@ window.QP = window.QP || {};
 Hard rules:
 - Never invent line items, specs, quantities, box weights, plants or dates. Every value must come from the uploaded file or the brief.
 - Continuing lines: copy every value exactly as written in the file row and give source_row (the Excel row number shown as "Row N").
-- Apply the brief: lines she asks to drop go in lines_dropped with her words. Keep all other lines unchanged, unless the brief explicitly changes a value; then report it in "changes" with her words.
+- Apply the brief: lines she asks to drop go in lines_dropped with her words and all their file values (so she can restore them). Keep all other lines unchanged, unless the brief explicitly changes a value; then report it in "changes" with her words.
 - New lines from the brief: use only values she wrote. Anything she did not give (box weight, board grade, product use, item code) = null. Never copy a value from a similar line and never use a "typical" value.
 - Plant names: use the buyer's plant list exactly (e.g. "Ranjangaon" → "Ranjangaon (Pune)").
 - Questionnaire: include every point the brief asks vendors to confirm (origin "brief"). You may add up to 3 extra questions (origin "ai_suggestion") with a one-line reason. Give each a topic.
@@ -102,7 +102,9 @@ Hard rules:
   "lines_kept": [ { "source_row": number, "code": string|null, "desc": string, "use": string|null, "ply": number|null, "board": string|null,
                     "length_mm": number|null, "width_mm": number|null, "height_mm": number|null, "weight_g": number|null,
                     "printing": string|null, "plant": string|null, "annual_qty": number|null } ],
-  "lines_dropped": [ { "source_row": number, "desc": string, "brief_quote": string } ],
+  "lines_dropped": [ { "source_row": number, "code": string|null, "desc": string, "use": string|null, "ply": number|null, "board": string|null,
+                       "length_mm": number|null, "width_mm": number|null, "height_mm": number|null, "weight_g": number|null,
+                       "printing": string|null, "plant": string|null, "annual_qty": number|null, "brief_quote": string } ],
   "changes": [ { "source_row": number, "field": "desc"|"use"|"ply"|"board"|"length_mm"|"width_mm"|"height_mm"|"weight_g"|"printing"|"plant"|"annual_qty", "new_value": string|number, "brief_quote": string } ],
   "lines_new": [ { "desc": string, "use": string|null, "ply": number|null, "board": string|null, "length_mm": number|null, "width_mm": number|null,
                    "height_mm": number|null, "weight_g": number|null, "printing": string|null, "plant": string|null, "annual_qty": number|null,
@@ -146,30 +148,32 @@ Hard rules:
     const seenRows = {};
     const changes = Array.isArray(d.changes) ? d.changes : [];
 
-    (d.lines_kept || []).slice().sort((a, b) => (a.source_row || 0) - (b.source_row || 0)).forEach(k => {
+    // A line taken from a file row: copy values, then verify each one appears in that row.
+    const fromRow = (k, keyPrefix) => {
       const r = Number(k.source_row);
       const L = {
-        key: 'r' + r, origin: 'upload', srcRow: r, code: k.code || '', desc: k.desc || '', use: k.use || '', ply: k.ply ?? '', board: k.board || '',
-        size: sizeStr(k.length_mm, k.width_mm, k.height_mm), weightG: k.weight_g ?? '', printing: k.printing || '', plant: '', qty: k.annual_qty ?? '',
+        key: keyPrefix + r, origin: 'upload', srcRow: r, code: k.code || '', desc: k.desc || '', use: k.use || '', ply: k.ply ?? '', board: k.board || '',
+        size: sizeStr(k.length_mm, k.width_mm, k.height_mm), weightG: k.weight_g ?? '', printing: k.printing || '', plant: plantOf(k.plant).plant, qty: k.annual_qty ?? '',
         lastYear: (contract.priv[r] || {}).price ?? null, supplier2026: (contract.priv[r] || {}).supplier ?? null, verify: [], changed: []
       };
-      const pl = plantOf(k.plant); L.plant = pl.plant;
-      // Verify against the file row (layout-agnostic: the value must appear in that row)
-      if (!contract.dataRows.includes(r)) L.verify.push({ field: 'row', msg: `Row ${r} is not a line in your file` });
-      else {
-        if (seenRows[r]) L.verify.push({ field: 'row', msg: `Row ${r} was used twice by the AI` });
-        seenRows[r] = 1;
-        const vals = rowVals(r), nums = rowNums(r);
-        const has = s => vals.some(v => v === norm(s) || (norm(s).length > 3 && v.includes(norm(s))));
-        if (L.desc && !has(L.desc)) L.verify.push({ field: 'desc', msg: `"${L.desc}" is not in row ${r}` });
-        if (L.code && !has(L.code)) L.verify.push({ field: 'code', msg: `Code not in row ${r}` });
-        [['ply', L.ply], ['weightG', L.weightG], ['qty', L.qty], ['size', k.length_mm], ['size', k.width_mm], ['size', k.height_mm]].forEach(([f, v]) => {
-          if (v !== '' && v != null && !nums.includes(Number(v))) L.verify.push({ field: f, msg: `${v} is not in row ${r}` });
-        });
-        if (L.printing && !has(L.printing)) L.verify.push({ field: 'printing', msg: `"${L.printing}" is not in row ${r}` });
-        if (L.board && !has(L.board)) L.verify.push({ field: 'board', msg: `"${L.board}" is not in row ${r}` });
-        if (k.plant && !vals.some(v => v.split(/[ (]/)[0] === norm(L.plant).split(/[ (]/)[0])) L.verify.push({ field: 'plant', msg: `Plant not in row ${r}` });
-      }
+      if (!contract.dataRows.includes(r)) { L.verify.push({ field: 'row', msg: `Row ${r} is not a line in your file` }); return L; }
+      if (seenRows[r]) L.verify.push({ field: 'row', msg: `Row ${r} was used twice by the AI` });
+      seenRows[r] = 1;
+      const vals = rowVals(r), nums = rowNums(r);
+      const has = s => vals.some(v => v === norm(s) || (norm(s).length > 3 && v.includes(norm(s))));
+      if (L.desc && !has(L.desc)) L.verify.push({ field: 'desc', msg: `"${L.desc}" is not in row ${r}` });
+      if (L.code && !has(L.code)) L.verify.push({ field: 'code', msg: `Code not in row ${r}` });
+      [['ply', L.ply], ['weightG', L.weightG], ['qty', L.qty], ['size', k.length_mm], ['size', k.width_mm], ['size', k.height_mm]].forEach(([f, v]) => {
+        if (v !== '' && v != null && !nums.includes(Number(v))) L.verify.push({ field: f, msg: `${v} is not in row ${r}` });
+      });
+      if (L.printing && !has(L.printing)) L.verify.push({ field: 'printing', msg: `"${L.printing}" is not in row ${r}` });
+      if (L.board && !has(L.board)) L.verify.push({ field: 'board', msg: `"${L.board}" is not in row ${r}` });
+      if (k.plant && !vals.some(v => v.split(/[ (]/)[0] === norm(L.plant).split(/[ (]/)[0])) L.verify.push({ field: 'plant', msg: `Plant not in row ${r}` });
+      return L;
+    };
+
+    (d.lines_kept || []).slice().sort((a, b) => (a.source_row || 0) - (b.source_row || 0)).forEach(k => {
+      const L = fromRow(k, 'r'), r = L.srcRow;
       // Changes the brief asked for (value must appear in the brief)
       changes.filter(c => Number(c.source_row) === r).forEach(c => {
         const inBrief = c.brief_quote && briefN.includes(norm(c.brief_quote).slice(0, 25));
@@ -186,11 +190,11 @@ Hard rules:
       lines.push(L);
     });
 
+    // Dropped lines keep their full file values (verified like kept lines) so Restore brings everything back.
     const dropped = (d.lines_dropped || []).map(x => {
-      const r = Number(x.source_row);
-      seenRows[r] = (seenRows[r] || 0) + 1;
+      const line = fromRow(x, 'r');
       const quoteOk = x.brief_quote && briefN.includes(norm(x.brief_quote).slice(0, 25));
-      return { srcRow: r, desc: x.desc, quote: x.brief_quote || '', quoteOk: !!quoteOk, lastYear: (contract.priv[r] || {}).price ?? null, supplier2026: (contract.priv[r] || {}).supplier ?? null };
+      return { srcRow: line.srcRow, desc: line.desc, quote: x.brief_quote || '', quoteOk: !!quoteOk, lastYear: line.lastYear, supplier2026: line.supplier2026, line };
     });
     const skipped = contract.dataRows.filter(r => !seenRows[r]);
 
@@ -227,7 +231,7 @@ Hard rules:
 
     return {
       stage: 'drafted', rev: 1, source: 'ai',
-      upload: { name: contract.name, privateCols: contract.privateCols, dataRows: contract.dataRows.length },
+      upload: { name: contract.name, sheet: contract.sheet, privateCols: contract.privateCols, dataRows: contract.dataRows.length },
       brief,
       meta: {
         id: meta.id, issueDate: QP.todayISO(), title: c.title || '', periodStart: c.period_start || '', periodEnd: c.period_end || '', dueDate: c.quote_due_date || '',

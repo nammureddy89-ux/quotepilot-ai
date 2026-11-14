@@ -221,7 +221,7 @@ a.isslink:hover { text-decoration: underline; }
 .o.ai { color: var(--violet); background: var(--violet-soft); }
 table.edit td { padding: 4px 5px; vertical-align: middle; }
 table.edit th { white-space: nowrap; }
-table.edit select { max-width: 150px; }
+table.edit select { max-width: 118px; }
 .bad-red { border-color: var(--red) !important; background: var(--red-soft) !important; }
 .bad-yellow { border-color: #f79009 !important; background: var(--amber-soft) !important; }
 .srcchip { font-size: 11px; background: #f2f4f7; border-radius: 4px; padding: 1px 6px; white-space: nowrap; cursor: default; }
@@ -239,3 +239,7 @@ details.card:not([open]) > summary { border-bottom: 0; }
 .vcopy .doc h4 { margin: 14px 0 4px; font-size: 13px; }
 .vcopy .doc ol { margin: 0; padding-left: 20px; font-size: 13px; }
 .flag .title .o { margin-left: 6px; vertical-align: 1px; }
+.stickybar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 16px; box-shadow: 0 -4px 14px rgba(16,24,40,.08); margin-top: 8px; }
+a.srcchip { text-decoration: none; color: inherit; cursor: pointer; }
+a.srcchip:hover { outline: 1px solid var(--brand); }
+.aiwhat { font-size: 12.5px; color: #475467; margin-top: 2px; }
